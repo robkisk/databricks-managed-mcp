@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pinning a SQL Warehouse to Your Databricks MCP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* ----------------------------------------------------------------
+     Reset + tokens
+  ---------------------------------------------------------------- */
+  *, *::before, *::after { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+    color: #1B3139;
+    background: #F9F7F4;
+    line-height: 1.55;
+    font-size: 17px;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  :root {
+    --navy-900: #0E1416;
+    --navy-800: #1B3139;
+    --navy-700: #2F4550;
+    --slate-500: #6B7785;
+    --slate-300: #B6BFC6;
+    --oat-light: #F9F7F4;
+    --oat-medium: #EFEAE2;
+    --white: #FFFFFF;
+    --lava-600: #FF3621;
+    --lava-700: #C42818;
+    --green-700: #00A972;
+    --border-soft: #E5E1D9;
+    --code-bg: #1B3139;
+    --code-text: #EFEAE2;
+    --shadow-card: 0 1px 2px rgba(14, 20, 22, 0.04), 0 8px 24px rgba(14, 20, 22, 0.04);
+    --shadow-card-hover: 0 1px 2px rgba(14, 20, 22, 0.06), 0 16px 40px rgba(14, 20, 22, 0.08);
+  }
+  a { color: var(--lava-600); text-decoration: none; border-bottom: 1px solid transparent; transition: border-color 120ms ease; }
+  a:hover { border-bottom-color: var(--lava-600); }
+  code, pre { font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
+  code { font-size: 0.9em; background: rgba(27, 49, 57, 0.06); padding: 1px 6px; border-radius: 4px; color: var(--navy-800); }
+
+  /* ----------------------------------------------------------------
+     Layout primitives
+  ---------------------------------------------------------------- */
+  .container { max-width: 920px; margin: 0 auto; padding: 0 32px; }
+  section { padding: 96px 0; }
+  section.tight { padding: 64px 0; }
+
+  /* ----------------------------------------------------------------
+     Hero
+  ---------------------------------------------------------------- */
+  .hero {
+    background:
+      radial-gradient(ellipse at top right, rgba(255, 54, 33, 0.12), transparent 50%),
+      radial-gradient(ellipse at bottom left, rgba(0, 169, 114, 0.08), transparent 50%),
+      linear-gradient(180deg, var(--navy-900) 0%, var(--navy-800) 100%);
+    color: var(--oat-light);
+    padding: 96px 0 88px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 4px;
+    background: var(--lava-600);
+  }
+  .eyebrow {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--lava-600);
+    margin-bottom: 16px;
+  }
+  .hero h1 {
+    font-size: 56px;
+    line-height: 1.08;
+    margin: 0 0 24px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--white);
+    max-width: 780px;
+  }
+  .hero h1 .accent { color: var(--lava-600); }
+  .hero .lede {
+    font-size: 20px;
+    line-height: 1.5;
+    color: rgba(249, 247, 244, 0.85);
+    max-width: 680px;
+    margin: 0 0 36px;
+  }
+  .hero .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 24px;
+    align-items: center;
+    margin-top: 40px;
+    padding-top: 32px;
+    border-top: 1px solid rgba(249, 247, 244, 0.12);
+    font-size: 14px;
+    color: rgba(249, 247, 244, 0.6);
+  }
+  .hero .meta strong { color: var(--oat-light); font-weight: 500; }
+  .cta-row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 22px;
+    border-radius: 6px;
+    font-weight: 500;
+    font-size: 15px;
+    transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+    border-bottom: none !important;
+  }
+  .btn-primary { background: var(--lava-600); color: var(--white); }
+  .btn-primary:hover { background: var(--lava-700); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(255, 54, 33, 0.25); }
+  .btn-secondary { background: rgba(249, 247, 244, 0.08); color: var(--white); border: 1px solid rgba(249, 247, 244, 0.18); }
+  .btn-secondary:hover { background: rgba(249, 247, 244, 0.14); }
+
+  /* ----------------------------------------------------------------
+     Section headers
+  ---------------------------------------------------------------- */
+  h2 {
+    font-size: 36px;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    line-height: 1.15;
+    margin: 0 0 16px;
+    color: var(--navy-800);
+  }
+  h2 .num {
+    display: inline-block;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    color: var(--lava-600);
+    text-transform: uppercase;
+    margin-right: 12px;
+    vertical-align: middle;
+    transform: translateY(-2px);
+  }
+  h3 {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 40px 0 12px;
+    color: var(--navy-800);
+  }
+  .section-lede {
+    font-size: 19px;
+    color: var(--slate-500);
+    max-width: 720px;
+    margin: 0 0 40px;
+    line-height: 1.55;
+  }
+
+  /* ----------------------------------------------------------------
+     TLDR card grid
+  ---------------------------------------------------------------- */
+  .tldr-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-top: 32px;
+  }
+  .tldr-card {
+    background: var(--white);
+    border-radius: 12px;
+    padding: 28px;
+    border: 1px solid var(--border-soft);
+    box-shadow: var(--shadow-card);
+  }
+  .tldr-card .label {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--lava-600);
+    margin-bottom: 12px;
+  }
+  .tldr-card .label.green { color: var(--green-700); }
+  .tldr-card h4 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 8px;
+    line-height: 1.35;
+    color: var(--navy-800);
+  }
+  .tldr-card p {
+    margin: 0;
+    font-size: 14px;
+    color: var(--slate-500);
+    line-height: 1.55;
+  }
+
+  /* ----------------------------------------------------------------
+     Tables
+  ---------------------------------------------------------------- */
+  .table-wrap {
+    background: var(--white);
+    border-radius: 10px;
+    border: 1px solid var(--border-soft);
+    overflow: hidden;
+    margin: 24px 0;
+    box-shadow: var(--shadow-card);
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 15px;
+  }
+  th, td {
+    text-align: left;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  th {
+    background: var(--oat-medium);
+    font-weight: 600;
+    color: var(--navy-800);
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  tr:last-child td { border-bottom: none; }
+  td code { background: rgba(27, 49, 57, 0.06); }
+  .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    border-radius: 999px;
+    letter-spacing: 0.02em;
+  }
+  .badge-fail { background: rgba(196, 40, 24, 0.08); color: var(--lava-700); }
+  .badge-pass { background: rgba(0, 169, 114, 0.1); color: var(--green-700); }
+  .badge-muted { background: rgba(27, 49, 57, 0.06); color: var(--slate-500); }
+
+  /* ----------------------------------------------------------------
+     Code blocks
+  ---------------------------------------------------------------- */
+  pre {
+    background: var(--code-bg);
+    color: var(--code-text);
+    padding: 22px 24px;
+    border-radius: 8px;
+    overflow-x: auto;
+    font-size: 14px;
+    line-height: 1.55;
+    margin: 20px 0;
+    box-shadow: var(--shadow-card);
+  }
+  pre code {
+    background: transparent;
+    color: inherit;
+    padding: 0;
+    font-size: inherit;
+  }
+  .code-label {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--slate-500);
+    margin-bottom: 8px;
+  }
+
+  /* ----------------------------------------------------------------
+     Diagrams + callouts
+  ---------------------------------------------------------------- */
+  .diagram {
+    background: var(--white);
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+    padding: 40px;
+    margin: 28px 0;
+    box-shadow: var(--shadow-card);
+  }
+  .diagram svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+
+  .callout {
+    border-left: 3px solid var(--lava-600);
+    background: var(--white);
+    padding: 20px 28px;
+    border-radius: 0 8px 8px 0;
+    margin: 24px 0;
+    box-shadow: var(--shadow-card);
+  }
+  .callout .callout-label {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--lava-600);
+    margin-bottom: 6px;
+  }
+  .callout p:last-child { margin-bottom: 0; }
+  .callout.green { border-left-color: var(--green-700); }
+  .callout.green .callout-label { color: var(--green-700); }
+
+  /* ----------------------------------------------------------------
+     Algorithm tier list
+  ---------------------------------------------------------------- */
+  .tiers {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 24px 0;
+  }
+  .tier {
+    display: grid;
+    grid-template-columns: 56px 1fr;
+    background: var(--white);
+    border-radius: 10px;
+    border: 1px solid var(--border-soft);
+    overflow: hidden;
+    align-items: stretch;
+    box-shadow: var(--shadow-card);
+  }
+  .tier .tier-num {
+    background: var(--navy-800);
+    color: var(--oat-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 22px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .tier.muted .tier-num { background: var(--slate-500); }
+  .tier .tier-body { padding: 14px 20px; }
+  .tier .tier-title {
+    font-weight: 600;
+    color: var(--navy-800);
+    font-size: 16px;
+    margin-bottom: 2px;
+  }
+  .tier .tier-sub { font-size: 13px; color: var(--slate-500); }
+
+  /* ----------------------------------------------------------------
+     Section alternating backgrounds
+  ---------------------------------------------------------------- */
+  .bg-white { background: var(--white); }
+  .bg-oat { background: var(--oat-light); }
+  .bg-dark {
+    background: linear-gradient(180deg, var(--navy-800) 0%, var(--navy-900) 100%);
+    color: var(--oat-light);
+  }
+  .bg-dark h2, .bg-dark h3, .bg-dark h4 { color: var(--white); }
+  .bg-dark .section-lede { color: rgba(249, 247, 244, 0.7); }
+  .bg-dark .callout { background: rgba(249, 247, 244, 0.04); border-left-color: var(--lava-600); }
+  .bg-dark .callout p { color: rgba(249, 247, 244, 0.85); }
+
+  /* ----------------------------------------------------------------
+     Two-column comparison
+  ---------------------------------------------------------------- */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin: 32px 0;
+  }
+  .col-card {
+    background: var(--white);
+    border-radius: 12px;
+    padding: 28px;
+    border: 1px solid var(--border-soft);
+    box-shadow: var(--shadow-card);
+  }
+  .col-card h4 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0 0 4px;
+    color: var(--navy-800);
+  }
+  .col-card .col-sub {
+    font-size: 13px;
+    color: var(--slate-500);
+    margin-bottom: 16px;
+    font-weight: 500;
+  }
+  .col-card ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    font-size: 14px;
+  }
+  .col-card li {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border-soft);
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    color: var(--navy-700);
+  }
+  .col-card li:last-child { border-bottom: none; }
+  .col-card li .li-label { color: var(--slate-500); flex-shrink: 0; }
+  .col-card li .li-value { font-weight: 500; text-align: right; }
+
+  /* ----------------------------------------------------------------
+     Steps
+  ---------------------------------------------------------------- */
+  .steps {
+    display: grid;
+    gap: 24px;
+    margin: 32px 0;
+  }
+  .step {
+    background: var(--white);
+    border-radius: 12px;
+    border: 1px solid var(--border-soft);
+    overflow: hidden;
+    box-shadow: var(--shadow-card);
+  }
+  .step-head {
+    padding: 18px 28px;
+    border-bottom: 1px solid var(--border-soft);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .step-head .step-num {
+    width: 32px; height: 32px;
+    border-radius: 999px;
+    background: var(--lava-600);
+    color: var(--white);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .step-head .step-title { font-weight: 600; color: var(--navy-800); font-size: 16px; }
+  .step-body { padding: 4px 28px 24px; font-size: 15px; color: var(--navy-700); }
+  .step-body pre { margin: 14px 0 6px; }
+
+  /* ----------------------------------------------------------------
+     Footer
+  ---------------------------------------------------------------- */
+  footer {
+    background: var(--navy-900);
+    color: rgba(249, 247, 244, 0.6);
+    padding: 56px 0;
+    font-size: 14px;
+  }
+  footer h4 {
+    color: var(--white);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin: 0 0 14px;
+  }
+  footer .footer-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 48px;
+    align-items: start;
+  }
+  footer a { color: var(--oat-light); border-bottom: 1px solid rgba(249, 247, 244, 0.3); }
+  footer a:hover { border-bottom-color: var(--lava-600); }
+  footer ul { list-style: none; padding: 0; margin: 0; }
+  footer li { padding: 4px 0; }
+
+  /* ----------------------------------------------------------------
+     Responsive
+  ---------------------------------------------------------------- */
+  @media (max-width: 768px) {
+    body { font-size: 16px; }
+    .container { padding: 0 20px; }
+    section { padding: 64px 0; }
+    .hero { padding: 64px 0; }
+    .hero h1 { font-size: 38px; }
+    .hero .lede { font-size: 18px; }
+    h2 { font-size: 28px; }
+    .tldr-grid { grid-template-columns: 1fr; }
+    .two-col { grid-template-columns: 1fr; }
+    footer .footer-grid { grid-template-columns: 1fr; gap: 32px; }
+    table { font-size: 14px; }
+    th, td { padding: 11px 14px; }
+  }
+
+  /* ----------------------------------------------------------------
+     Print
+  ---------------------------------------------------------------- */
+  @media print {
+    body { background: white; color: black; font-size: 11pt; }
+    .hero, .bg-dark { background: white !important; color: black !important; }
+    .hero h1, .bg-dark h2, .bg-dark h3 { color: black !important; }
+    .hero .lede, .bg-dark .section-lede { color: #333 !important; }
+    pre { background: #f5f5f5 !important; color: #000 !important; box-shadow: none; border: 1px solid #ccc; }
+    .btn { display: none; }
+    footer { background: white; color: black; }
+    footer a { color: black; }
+    section { padding: 32px 0; page-break-inside: avoid; }
+    .table-wrap, .callout, .step, .tier, .tldr-card, .col-card, .diagram { box-shadow: none; border: 1px solid #ddd; page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ==================================================================
+     HERO
+     ================================================================== -->
+<header class="hero">
+  <div class="container">
+    <div class="eyebrow">Databricks MCP · Technical Guide</div>
+    <h1>Pinning a SQL Warehouse to Your <span class="accent">Databricks MCP</span></h1>
+    <p class="lede">
+      The managed <code style="color:#FF3621;background:rgba(255,54,33,0.12);">/api/2.0/mcp/sql</code> endpoint ignores every client-side warehouse hint, but it <em>does</em> honor a server-side per-user override API. Here's how the default selection works, when it breaks production workloads, and the two approaches that give you explicit control.
+    </p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="https://github.com/robkisk/databricks-mcp-warehouse-pin">
+        Reference implementation on GitHub
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+      </a>
+      <a class="btn btn-secondary" href="#problem">Read the analysis</a>
+    </div>
+    <div class="meta">
+      <span><strong>Audience:</strong> Databricks customers using MCP-based agents</span>
+      <span><strong>Scope:</strong> SQL warehouse routing for `/api/2.0/mcp/sql`</span>
+      <span><strong>Verified:</strong> Against live Databricks service</span>
+    </div>
+  </div>
+</header>
+
+<!-- ==================================================================
+     TL;DR
+     ================================================================== -->
+<section class="bg-oat tight" id="tldr">
+  <div class="container">
+    <h2><span class="num">01</span>The short version</h2>
+    <p class="section-lede">Three takeaways. Everything else in this guide supports them.</p>
+
+    <div class="tldr-grid">
+      <div class="tldr-card">
+        <div class="label">The problem</div>
+        <h4>The managed MCP endpoint cannot be warehouse-pinned</h4>
+        <p>URL path, query string, HTTP headers, JSON-RPC arguments &mdash; <code>/api/2.0/mcp/sql</code> ignores every client-side pinning attempt. The server picks the warehouse.</p>
+      </div>
+      <div class="tldr-card">
+        <div class="label">What happens instead</div>
+        <h4>Queries route dynamically through a hidden priority algorithm</h4>
+        <p>A five-tier priority list runs at every <code>tools/call</code> (running &gt; stopped, &ldquo;shared&rdquo;-named &gt; generic, serverless &gt; classic, user-owned &gt; not). One MCP session can route to different warehouses across calls.</p>
+      </div>
+      <div class="tldr-card">
+        <div class="label green">The fix</div>
+        <h4>Two paths, depending on scope</h4>
+        <p><strong>Option A:</strong> Set a per-user default warehouse override via the SQL Warehouses API &mdash; the managed MCP honors it natively, no code needed. <strong>Option B:</strong> Run a 145-line custom MCP when you need per-agent routing or pinning that follows the workload. <a href="https://github.com/robkisk/databricks-mcp-warehouse-pin">Reference here</a>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================================================================
+     SECTION 2 — THE PROBLEM
+     ================================================================== -->
+<section class="bg-white" id="problem">
+  <div class="container">
+    <h2><span class="num">02</span>The problem</h2>
+    <p class="section-lede">Databricks ships pre-built MCP endpoints under your workspace URL. You wire <code>/api/2.0/mcp/sql</code> into Claude Code or Cursor with workspace OAuth and ask the agent to run SQL. The query has to land on a warehouse, but the endpoint accepts no warehouse hint from your client.</p>
+
+    <h3>Client-side pinning approaches that don't work</h3>
+    <p>Four mechanisms could pin a warehouse from the client side. None of them work. Outcomes below come from direct probing of the live service.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Pinning mechanism attempted</th>
+            <th>Outcome</th>
+            <th>Where the query actually ran</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>/api/2.0/mcp/sql/&lt;warehouse_id&gt;</code> (path)</td>
+            <td><span class="badge badge-fail">HTTP 404</span></td>
+            <td>Not implemented — request rejected</td>
+          </tr>
+          <tr>
+            <td><code>?warehouse_id=&lt;id&gt;</code> (query string)</td>
+            <td><span class="badge badge-fail">Silently ignored</span></td>
+            <td>Different warehouse — pin was dropped server-side</td>
+          </tr>
+          <tr>
+            <td><code>warehouse_id</code> in <code>tools/call</code> args</td>
+            <td><span class="badge badge-fail">Not in schema</span></td>
+            <td>Ignored — tool's JSON schema doesn't declare the field</td>
+          </tr>
+          <tr>
+            <td>Custom HTTP headers (<code>X-Databricks-Warehouse-Id</code>, etc.)</td>
+            <td><span class="badge badge-muted">No effect</span></td>
+            <td>No documented header exists; never observed honored</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">Bottom line</div>
+      <p>Your client has no way to tell the managed MCP which warehouse to use. The server decides, every time.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ==================================================================
+     SECTION 3 — THE ALGORITHM
+     ================================================================== -->
+<section class="bg-oat" id="algorithm">
+  <div class="container">
+    <h2><span class="num">03</span>How the managed MCP picks a warehouse</h2>
+    <p class="section-lede">The server walks a five-tier priority algorithm, matching the public CLI command <code>databricks experimental aitools tools get-default-warehouse</code>. Both produce identical results against the same workspace.</p>
+
+    <h3>Priority tiers (evaluated top-down)</h3>
+    <div class="tiers">
+      <div class="tier">
+        <div class="tier-num">1</div>
+        <div class="tier-body">
+          <div class="tier-title">Running warehouse named exactly <code>Shared endpoint</code> or <code>dbdemos-shared-endpoint</code></div>
+          <div class="tier-sub">Hard-coded preferred names for known shared compute. Wins all subsequent tiers.</div>
+        </div>
+      </div>
+      <div class="tier">
+        <div class="tier-num">2</div>
+        <div class="tier-body">
+          <div class="tier-title">Running warehouse with <code>shared</code> anywhere in its name</div>
+          <div class="tier-sub">Case-insensitive substring match. Naming convention determines selection.</div>
+        </div>
+      </div>
+      <div class="tier">
+        <div class="tier-num">3</div>
+        <div class="tier-body">
+          <div class="tier-title">Any running warehouse</div>
+          <div class="tier-sub">Generic catch-all for running compute. Most common tier hit in practice.</div>
+        </div>
+      </div>
+      <div class="tier muted">
+        <div class="tier-num">4</div>
+        <div class="tier-body">
+          <div class="tier-title">Stopped warehouse with <code>shared</code> in name</div>
+          <div class="tier-sub">SDK auto-starts before query execution. Serverless: ~5s cold start; classic: 3–5 min.</div>
+        </div>
+      </div>
+      <div class="tier muted">
+        <div class="tier-num">5</div>
+        <div class="tier-body">
+          <div class="tier-title">Any stopped warehouse</div>
+          <div class="tier-sub">Last-resort fallback. Same auto-start behavior.</div>
+        </div>
+      </div>
+    </div>
+
+    <h3>Within-tier tiebreaks</h3>
+    <p>When multiple warehouses match the same tier, the algorithm orders them by:</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Rank</th><th>Criterion</th><th>Effect</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>1</td><td>Serverless compute</td><td>Serverless warehouses always preferred over classic within a tier</td></tr>
+          <tr><td>2</td><td>Ownership matches calling user</td><td>Warehouses created by the authenticated user preferred next</td></tr>
+          <tr><td>3</td><td>API list order</td><td>Final fallback — whichever the warehouses API returns first</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout green">
+      <div class="callout-label">Important &mdash; per-request, not per-session</div>
+      <p>The selection re-evaluates on every <code>tools/call</code>. If one warehouse stops mid-session and another starts, follow-up queries route to whichever is now running. There's no session affinity. Routing is volatile.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ==================================================================
+     SECTION 4 — SCENARIOS
+     ================================================================== -->
+<section class="bg-white" id="scenarios">
+  <div class="container">
+    <h2><span class="num">04</span>What this means in practice</h2>
+    <p class="section-lede">Routing outcomes for typical workspace states. The same MCP setup makes different decisions based on what's running.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Workspace state at query time</th>
+            <th>Where the managed MCP routes the query</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Single warehouse, RUNNING</td>
+            <td>That one (only option in tier 3)</td>
+          </tr>
+          <tr>
+            <td>Single warehouse, STOPPED</td>
+            <td>That one — SDK auto-starts it</td>
+          </tr>
+          <tr>
+            <td>Multiple warehouses, exactly one RUNNING</td>
+            <td>The running one (tier 3 dominates)</td>
+          </tr>
+          <tr>
+            <td>Multiple RUNNING, one named &ldquo;Shared endpoint&rdquo;</td>
+            <td>&ldquo;Shared endpoint&rdquo; (tier 1)</td>
+          </tr>
+          <tr>
+            <td>Multiple RUNNING, one has &ldquo;shared&rdquo; in name</td>
+            <td>The &ldquo;shared&rdquo;-named one (tier 2)</td>
+          </tr>
+          <tr>
+            <td>Multiple RUNNING, no &ldquo;shared&rdquo; naming convention</td>
+            <td>Serverless first &rarr; user-owned next &rarr; API order</td>
+          </tr>
+          <tr>
+            <td>All STOPPED</td>
+            <td>Tier 4/5 selection; auto-starts the chosen one</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">Why most demos &ldquo;just work&rdquo;</div>
+      <p>Most Databricks workspaces ship with a <strong>Serverless Starter Warehouse</strong>. It's serverless (tier preference), Databricks-managed, and usually the only warehouse running in a new workspace. So managed-MCP queries land on it consistently out of the box. People see this and assume the MCP picks a sensible default. That's coincidence, not policy. The moment a teammate starts a different warehouse, routing flips.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ==================================================================
+     SECTION 5 — WHEN IT MATTERS
+     ================================================================== -->
+<section class="bg-dark" id="matters">
+  <div class="container">
+    <h2><span class="num">05</span>When this matters for your team</h2>
+    <p class="section-lede">Dynamic routing is acceptable for single-user prototyping. It becomes a liability in four production scenarios.</p>
+
+    <div class="two-col">
+      <div class="col-card" style="background: rgba(249, 247, 244, 0.06); border-color: rgba(249, 247, 244, 0.1); color: var(--oat-light);">
+        <h4 style="color: var(--white);">Cost attribution and chargeback</h4>
+        <div class="col-sub" style="color: rgba(249, 247, 244, 0.55);">When finance needs to attribute spend</div>
+        <p style="font-size: 14px; color: rgba(249, 247, 244, 0.8); margin: 0;">Agent queries are billed to whichever warehouse runs them. With dynamic routing, your marketing team's warehouse can end up paying for engineering's agent queries. Pinning routes spend back to the team that owns the agent.</p>
+      </div>
+      <div class="col-card" style="background: rgba(249, 247, 244, 0.06); border-color: rgba(249, 247, 244, 0.1); color: var(--oat-light);">
+        <h4 style="color: var(--white);">Team isolation</h4>
+        <div class="col-sub" style="color: rgba(249, 247, 244, 0.55);">When you want bounded blast radius</div>
+        <p style="font-size: 14px; color: rgba(249, 247, 244, 0.8); margin: 0;">A bad agent query on a shared warehouse starves other teams' workloads. Pinning each agent to its team's warehouse stops runaway queries from spilling across team boundaries.</p>
+      </div>
+      <div class="col-card" style="background: rgba(249, 247, 244, 0.06); border-color: rgba(249, 247, 244, 0.1); color: var(--oat-light);">
+        <h4 style="color: var(--white);">Predictable performance</h4>
+        <div class="col-sub" style="color: rgba(249, 247, 244, 0.55);">When SLAs depend on warehouse class</div>
+        <p style="font-size: 14px; color: rgba(249, 247, 244, 0.8); margin: 0;">Warehouses differ in size, max scaling limits, and Photon configuration. Production agents with latency SLAs need queries on a specific tuned warehouse, not whatever happens to be warm.</p>
+      </div>
+      <div class="col-card" style="background: rgba(249, 247, 244, 0.06); border-color: rgba(249, 247, 244, 0.1); color: var(--oat-light);">
+        <h4 style="color: var(--white);">Compliance and audit</h4>
+        <div class="col-sub" style="color: rgba(249, 247, 244, 0.55);">When &ldquo;where did this run&rdquo; matters</div>
+        <p style="font-size: 14px; color: rgba(249, 247, 244, 0.8); margin: 0;">Some regulatory frameworks require fixed compute boundaries. Data with residency constraints can only run on specific compute. Dynamic routing breaks any audit pattern that maps agent activity to specific warehouses.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================================================================
+     SECTION 6 — THE SOLUTION (HOW IT WORKS)
+     ================================================================== -->
+<section class="bg-oat" id="solution">
+  <div class="container">
+    <h2><span class="num">06</span>Two paths to predictable warehouse routing</h2>
+    <p class="section-lede">Pick the one that matches your scope. Option A is native and simpler; Option B handles cases Option A can't.</p>
+
+    <h3>Option A &mdash; Per-user default warehouse override (recommended when applicable)</h3>
+    <p>The Databricks SQL Warehouses API lets admins (and users for themselves) configure a default warehouse per user. The managed <code>/api/2.0/mcp/sql</code> endpoint honors this override when routing that user's queries. Verified end-to-end against the live service.</p>
+
+    <pre><code>databricks warehouses create-default-warehouse-override \
+  me CUSTOM \
+  --warehouse-id &lt;warehouse-id&gt; \
+  --profile &lt;your-profile&gt;</code></pre>
+
+    <p>Type values: <code>CUSTOM</code> (specific warehouse) or <code>LAST_SELECTED</code> (sticky most-recent). Read with <code>get-default-warehouse-override</code>, update with <code>update-default-warehouse-override</code>, list/delete with the obvious siblings. Admins can target any user by replacing <code>me</code> with the numeric user ID. <a href="https://docs.databricks.com/api/workspace/warehouses/updatedefaultwarehouseoverride">Full API docs</a>.</p>
+
+    <div class="callout green">
+      <div class="callout-label">Use Option A when</div>
+      <p>Every query from a given user should route to the same warehouse. Common for per-team isolation (each user belongs to one team, one team owns one warehouse), cost attribution (spend tracks to the user's department), or compliance audits that map users to compute boundaries. No <code>.mcp.json</code> changes needed &mdash; the managed MCP looks up the override server-side from the calling user's identity.</p>
+    </div>
+
+    <h3>Option B &mdash; Custom MCP server (when Option A doesn't fit)</h3>
+    <p>Run a custom MCP server that calls the Statement Execution API with an explicit <code>warehouse_id</code>. The reference implementation at <a href="https://github.com/robkisk/databricks-mcp-warehouse-pin">github.com/robkisk/databricks-mcp-warehouse-pin</a> is one file, ~145 lines.</p>
+
+    <div class="callout">
+      <div class="callout-label">Use Option B when</div>
+      <p>You need <strong>per-agent</strong> routing (one user running multiple agents that should each route to different warehouses), you lack admin access to set overrides for other users, you want pinning that follows the workload rather than the user (e.g., a shared agent service principal), or you need behavior beyond <code>execute_sql</code> &mdash; custom result shaping, additional tools, server-side logging.</p>
+    </div>
+
+    <h3>How Option B's two-layer environment model works</h3>
+    <p>The custom server reads two independent environment variables at startup. One controls auth, the other controls compute:</p>
+
+    <div class="diagram">
+      <svg viewBox="0 0 840 360" xmlns="http://www.w3.org/2000/svg">
+        <!-- ────── Top labels ────── -->
+        <text x="155" y="32" font-family="DM Sans, sans-serif" font-size="13" font-weight="600" fill="#FF3621" letter-spacing="1.6">AUTH LAYER</text>
+        <text x="660" y="32" font-family="DM Sans, sans-serif" font-size="13" font-weight="600" fill="#FF3621" letter-spacing="1.6">COMPUTE LAYER</text>
+
+        <!-- ────── Two env var boxes ────── -->
+        <g>
+          <rect x="40" y="50" width="340" height="92" rx="10" fill="#FFFFFF" stroke="#E5E1D9"/>
+          <text x="60" y="80" font-family="IBM Plex Mono, monospace" font-size="14" font-weight="600" fill="#1B3139">DATABRICKS_CONFIG_PROFILE</text>
+          <text x="60" y="110" font-family="DM Sans, sans-serif" font-size="13" fill="#6B7785">Workspace host + OAuth method</text>
+          <text x="60" y="128" font-family="DM Sans, sans-serif" font-size="13" fill="#6B7785">from ~/.databrickscfg</text>
+        </g>
+
+        <g>
+          <rect x="460" y="50" width="340" height="92" rx="10" fill="#FFFFFF" stroke="#E5E1D9"/>
+          <text x="480" y="80" font-family="IBM Plex Mono, monospace" font-size="14" font-weight="600" fill="#1B3139">DATABRICKS_WAREHOUSE_ID</text>
+          <text x="480" y="110" font-family="DM Sans, sans-serif" font-size="13" fill="#6B7785">Pin all queries to this warehouse</text>
+          <text x="480" y="128" font-family="DM Sans, sans-serif" font-size="13" fill="#6B7785">(16-char hex ID)</text>
+        </g>
+
+        <!-- ────── Arrows down to MCP server ────── -->
+        <path d="M210 142 L 210 180" stroke="#1B3139" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+        <path d="M630 142 L 630 180" stroke="#1B3139" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+
+        <!-- ────── MCP server box ────── -->
+        <g>
+          <rect x="160" y="190" width="520" height="60" rx="10" fill="#1B3139"/>
+          <text x="420" y="218" font-family="DM Sans, sans-serif" font-size="15" font-weight="600" fill="#FFFFFF" text-anchor="middle">Custom MCP Server (server.py)</text>
+          <text x="420" y="238" font-family="IBM Plex Mono, monospace" font-size="12" fill="#EFEAE2" text-anchor="middle">FastMCP → Databricks SDK → execute_statement(warehouse_id=…)</text>
+        </g>
+
+        <!-- ────── Arrow down to SQL warehouse ────── -->
+        <path d="M420 250 L 420 290" stroke="#1B3139" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+
+        <!-- ────── SQL warehouse box ────── -->
+        <g>
+          <rect x="260" y="300" width="320" height="48" rx="10" fill="#FF3621"/>
+          <text x="420" y="330" font-family="DM Sans, sans-serif" font-size="15" font-weight="600" fill="#FFFFFF" text-anchor="middle">Your pinned SQL warehouse</text>
+        </g>
+
+        <defs>
+          <marker id="arrow" markerWidth="10" markerHeight="10" refX="6" refY="3" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L0,6 L6,3 z" fill="#1B3139"/>
+          </marker>
+        </defs>
+      </svg>
+    </div>
+
+    <p>Your MCP client (Claude Code, Cursor, etc.) sets both env vars when it launches the server, usually via the <code>env</code> block in <code>.mcp.json</code>. The server controls compute routing because <strong>it</strong> makes the SDK call. No client-side trick lets an LLM bypass the pin.</p>
+
+    <h3>Why client-side pinning fails on the managed MCP</h3>
+    <p>The managed endpoint's tool schema declares <code>query</code> but not <code>warehouse_id</code>. Even when a client injects the parameter, the server's schema validator strips it. The endpoint also has no path or header surface for warehouse selection. Server-side configuration &mdash; specifically the per-user default warehouse override described in Option A above &mdash; is the only routing knob the managed MCP exposes today. A future endpoint variant like <code>/api/2.0/mcp/sql/&lt;warehouse_id&gt;</code> (matching the pattern used for Genie spaces, Vector Search indexes, and Unity Catalog functions) would give per-call routing, but that hasn't shipped yet.</p>
+  </div>
+</section>
+
+<!-- ==================================================================
+     SECTION 7 — TWO DEPLOYMENT MODES
+     ================================================================== -->
+<section class="bg-white" id="modes">
+  <div class="container">
+    <h2><span class="num">07</span>Two deployment modes</h2>
+    <p class="section-lede">One server file (<code>server.py</code>) covers both modes. It picks the right mode at startup by checking for <code>DATABRICKS_APP_PORT</code>, which the Databricks Apps platform injects and local launches don't.</p>
+
+    <div class="two-col">
+      <div class="col-card">
+        <h4>Local stdio mode</h4>
+        <div class="col-sub">For individual developers</div>
+        <ul>
+          <li><span class="li-label">Transport</span><span class="li-value">stdin / stdout</span></li>
+          <li><span class="li-label">How clients reach it</span><span class="li-value">Subprocess launch from <code>.mcp.json</code></span></li>
+          <li><span class="li-label">Auth identity</span><span class="li-value">Calling user's OAuth token</span></li>
+          <li><span class="li-label">Warehouse permissions</span><span class="li-value">Inherits user's CAN_USE grants</span></li>
+          <li><span class="li-label">Setup time</span><span class="li-value">~5 minutes</span></li>
+        </ul>
+      </div>
+      <div class="col-card">
+        <h4>Databricks App mode</h4>
+        <div class="col-sub">For multi-user, governed deployments</div>
+        <ul>
+          <li><span class="li-label">Transport</span><span class="li-value">HTTPS + OAuth proxy</span></li>
+          <li><span class="li-label">How clients reach it</span><span class="li-value">Stdio &rarr; HTTPS bridge in <code>.mcp.json</code></span></li>
+          <li><span class="li-label">Auth identity</span><span class="li-value">App's service principal</span></li>
+          <li><span class="li-label">Warehouse permissions</span><span class="li-value">SP CAN_USE (auto-bound on deploy)</span></li>
+          <li><span class="li-label">Setup time</span><span class="li-value">~15 minutes (one-time)</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">SP auth caveat for deployed mode</div>
+      <p>When queries run through the deployed app, <code>current_user()</code> returns the app's service principal UUID, not the calling user's email. Unity Catalog grants need to be on the SP, not on individual users. For end-user-attributed SQL (each user runs as themselves), enable the &ldquo;Databricks Apps user-token passthrough&rdquo; preview and switch to OBO auth. The README in the reference repo covers the upgrade path.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ==================================================================
+     SECTION 8 — GETTING STARTED
+     ================================================================== -->
+<section class="bg-oat" id="getting-started">
+  <div class="container">
+    <h2><span class="num">08</span>Getting started in 5 minutes</h2>
+    <p class="section-lede">Verify warehouse pinning works in your workspace using the local stdio mode. No deployment needed for the first test.</p>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-head">
+          <div class="step-num">1</div>
+          <div class="step-title">Clone the reference repo</div>
+        </div>
+        <div class="step-body">
+<pre><code>git clone https://github.com/robkisk/databricks-mcp-warehouse-pin.git
+cd databricks-mcp-warehouse-pin</code></pre>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-head">
+          <div class="step-num">2</div>
+          <div class="step-title">Authenticate to your Databricks workspace</div>
+        </div>
+        <div class="step-body">
+<pre><code>databricks auth login --host https://&lt;your-workspace&gt;.cloud.databricks.com</code></pre>
+          <p style="margin: 8px 0 0; font-size: 14px; color: var(--slate-500);">Creates a profile in <code>~/.databrickscfg</code> named <code>DEFAULT</code>, or whatever you pass to <code>--profile</code>.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-head">
+          <div class="step-num">3</div>
+          <div class="step-title">Set the pin and run the smoke test</div>
+        </div>
+        <div class="step-body">
+<pre><code>export DATABRICKS_CONFIG_PROFILE=DEFAULT
+export DATABRICKS_WAREHOUSE_ID=&lt;your-warehouse-id&gt;
+uv run smoke_test.py</code></pre>
+          <p style="margin: 8px 0 0; font-size: 14px; color: var(--slate-500);">The smoke test boots the server, sends an <code>execute_sql</code> call, and watches the Databricks control plane to confirm only the pinned warehouse transitioned to RUNNING. Output ends with <code>PASS</code> when pinning works.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-head">
+          <div class="step-num">4</div>
+          <div class="step-title">Wire into Claude Code / Cursor</div>
+        </div>
+        <div class="step-body">
+          <span class="code-label">.mcp.json</span>
+<pre><code>{
+  "mcpServers": {
+    "pinned-sql": {
+      "command": "uv",
+      "args": ["run", "/absolute/path/to/repo/server.py"],
+      "env": {
+        "DATABRICKS_CONFIG_PROFILE": "DEFAULT",
+        "DATABRICKS_WAREHOUSE_ID": "&lt;your-warehouse-id&gt;"
+      }
+    }
+  }
+}</code></pre>
+          <p style="margin: 8px 0 0; font-size: 14px; color: var(--slate-500);">Restart your MCP client. The tool <code>mcp__pinned-sql__execute_sql</code> becomes available. The reference repo's README covers the Databricks App deployment path.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================================================================
+     FOOTER
+     ================================================================== -->
+<footer>
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <h4>About this guide</h4>
+        <p>How SQL warehouse routing works on the Databricks managed MCP, with a reference implementation for predictable pinning. Findings come from direct probing of the live service.</p>
+        <p style="margin-top: 16px;">If something looks wrong, doesn't match your workspace, or you want the pattern extended for your use case, the reference repo accepts issues and PRs.</p>
+      </div>
+      <div>
+        <h4>Links</h4>
+        <ul>
+          <li><a href="https://github.com/robkisk/databricks-mcp-warehouse-pin">Reference implementation</a></li>
+          <li><a href="https://docs.databricks.com/aws/en/generative-ai/mcp/">Databricks MCP docs</a></li>
+          <li><a href="https://modelcontextprotocol.io/">Model Context Protocol</a></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

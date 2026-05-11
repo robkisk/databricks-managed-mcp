@@ -4,6 +4,10 @@ A minimal, working solution for **pinning a Databricks SQL MCP server to a
 specific SQL warehouse**. Run it locally as a stdio MCP, or deploy it as a
 Databricks App and reach it through the included OAuth proxy.
 
+> **Prefer the visual guide?** Open [`guide.html`](guide.html) for a
+> branded, self-contained version of this content with the architecture
+> diagrams and side-by-side option comparison.
+
 ## The problem this solves
 
 The Databricks-managed MCP endpoint at `/api/2.0/mcp/sql` does **not** let
