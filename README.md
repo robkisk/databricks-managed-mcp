@@ -7,29 +7,82 @@ Databricks App and reach it through the included OAuth proxy.
 ## The problem this solves
 
 The Databricks-managed MCP endpoint at `/api/2.0/mcp/sql` does **not** let
-you pin queries to a specific warehouse. It picks one server-side using
-internal heuristics (any RUNNING warehouse > any STOPPED, serverless first,
-"shared"-named first, etc.). The endpoint silently ignores every client-side
-pinning attempt:
+you pin queries to a specific warehouse from the client. URL path, query
+string, HTTP headers, and JSON-RPC arguments are all silently ignored:
 
-| Attempted pin mechanism                    | Result                                              |
+| Attempted client-side pin mechanism        | Result                                              |
 | ------------------------------------------ | --------------------------------------------------- |
 | `/api/2.0/mcp/sql/<warehouse_id>` in path  | HTTP 404 — not implemented                          |
 | `?warehouse_id=<id>` in query string       | HTTP 200, parameter silently dropped                |
 | `warehouse_id` in `tools/call` arguments   | Server ignores unknown args (not in tool schema)    |
 | Custom HTTP headers                        | No documented path; never observed honored          |
 
-When you need **predictable warehouse selection** — for cost attribution,
-team isolation, performance SLAs, compliance audit trails, or just a
-guarantee that your agent's queries land where you intend — run a custom
-MCP server that calls the Databricks SDK directly.
+By default the endpoint picks a warehouse server-side using internal
+heuristics (any RUNNING warehouse > any STOPPED, serverless first,
+"shared"-named first, etc.). When you need **predictable warehouse
+selection** — for cost attribution, team isolation, performance SLAs, or
+compliance — you have two options.
 
-This repo is the smallest such server, plus the deployment and proxy glue
-needed to use it from Claude Code, Cursor, or any other MCP client.
+## Two warehouse pinning approaches
 
-## How the pin works (two-layer model)
+### Option A — Per-user default warehouse override (native, no custom code)
 
-The server reads **two independent environment variables** at startup:
+The Databricks SQL Warehouses API lets you configure a default warehouse
+per user. The managed `/api/2.0/mcp/sql` endpoint **honors this override**
+when routing that user's queries. Verified end-to-end with state-delta
+testing.
+
+```bash
+# Set the override for the current user
+databricks warehouses create-default-warehouse-override \
+  me CUSTOM \
+  --warehouse-id <warehouse-id> \
+  --profile <your-profile>
+
+# Read current setting
+databricks warehouses get-default-warehouse-override \
+  default-warehouse-overrides/me --profile <your-profile>
+
+# Admins can set overrides for any user (replace 'me' with numeric user ID)
+databricks warehouses create-default-warehouse-override \
+  <user-id> CUSTOM \
+  --warehouse-id <warehouse-id> \
+  --profile <your-profile>
+```
+
+Type values:
+- `CUSTOM` — pin to a specific `--warehouse-id`
+- `LAST_SELECTED` — use the user's most recently selected warehouse
+
+**Use this when:** every query from a given user should route to the same
+warehouse. Common for per-team isolation, cost attribution, or
+single-agent-per-user workflows. No code changes needed in your
+`.mcp.json` — the managed MCP picks up the override automatically.
+
+Docs:
+[admin SQL settings](https://docs.databricks.com/aws/en/admin/sql/) ·
+[updateDefaultWarehouseOverride API](https://docs.databricks.com/api/workspace/warehouses/updatedefaultwarehouseoverride)
+
+### Option B — Custom MCP server (this repo)
+
+Run your own MCP server that calls the Databricks SDK directly with an
+explicit `warehouse_id`. The rest of this README describes this approach.
+
+**Use this when:**
+- You need **per-agent routing** — different agents on the same user's
+  machine routing to different warehouses
+- You don't have admin access to set overrides for other users
+- You want pinning that follows the agent, not the user (e.g., a shared
+  agent service principal)
+- You need behavior beyond `execute_sql` — custom result shaping,
+  additional tools, server-side logging, structured response trimming
+
+The custom server is small (~145 lines) and demonstrates the pattern
+end-to-end including Databricks Apps deployment.
+
+## How the custom MCP pins the warehouse (two-layer model)
+
+The custom server reads **two independent environment variables** at startup:
 
 | Env var                       | Purpose         | Used by                                                 |
 | ----------------------------- | --------------- | ------------------------------------------------------- |
@@ -40,7 +93,8 @@ The server fully controls compute routing because **it makes the SDK call**.
 There's no client-side trick a calling LLM could use to bypass the pin — the
 warehouse is decided where the SDK invocation happens, inside this server's
 process. Contrast with the managed MCP, where your client only forwards
-JSON-RPC frames to a Databricks-hosted endpoint and has no say in routing.
+JSON-RPC frames to a Databricks-hosted endpoint and has no say in routing
+beyond the per-user override Option A configures.
 
 ---
 
