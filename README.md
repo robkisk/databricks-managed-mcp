@@ -7,10 +7,10 @@ Databricks App and reach it through the included OAuth proxy.
 ## The problem this solves
 
 The Databricks-managed MCP endpoint at `/api/2.0/mcp/sql` does **not** let
-you pin queries to a specific warehouse. It picks one server-side based on
+you pin queries to a specific warehouse. It picks one server-side using
 internal heuristics (any RUNNING warehouse > any STOPPED, serverless first,
-"shared"-named first, etc.). Empirically the endpoint silently ignores every
-client-side hint we tested:
+"shared"-named first, etc.). The endpoint silently ignores every client-side
+pinning attempt:
 
 | Attempted pin mechanism                    | Result                                              |
 | ------------------------------------------ | --------------------------------------------------- |
@@ -19,13 +19,13 @@ client-side hint we tested:
 | `warehouse_id` in `tools/call` arguments   | Server ignores unknown args (not in tool schema)    |
 | Custom HTTP headers                        | No documented path; never observed honored          |
 
-When you need **deterministic warehouse selection** — for cost attribution,
-isolation per-team, predictable performance, compliance audit trails, or
-just a guarantee that your agent's queries land on the warehouse you intend
-— you need a custom MCP server that calls the Databricks SDK directly.
+When you need **predictable warehouse selection** — for cost attribution,
+team isolation, performance SLAs, compliance audit trails, or just a
+guarantee that your agent's queries land where you intend — run a custom
+MCP server that calls the Databricks SDK directly.
 
-This repo is the smallest possible such server, plus the deployment + proxy
-glue needed to use it from Claude Code, Cursor, or any other MCP client.
+This repo is the smallest such server, plus the deployment and proxy glue
+needed to use it from Claude Code, Cursor, or any other MCP client.
 
 ## How the pin works (two-layer model)
 
@@ -305,27 +305,6 @@ preview flags.
 
 ---
 
-# Verification methodology
-
-The smoke test uses **state-delta verification** — it captures every
-warehouse's state before and after the query, then confirms only the pinned
-one started. This is robust because it doesn't depend on parsing
-implementation-specific response shapes — just observable side effects on
-the Databricks control plane.
-
-| Test scenario                                            | Result                                            |
-| -------------------------------------------------------- | ------------------------------------------------- |
-| Managed `/api/2.0/mcp/sql` + `?warehouse_id=X`           | X stayed STOPPED — query ran on workspace default |
-| This server (local stdio) + `DATABRICKS_WAREHOUSE_ID=X`  | X transitioned STOPPED → RUNNING                  |
-| This server (HTTP + proxy, localhost) + env-var pin      | X transitioned STOPPED → RUNNING                  |
-| This server (deployed Databricks App + proxy)            | X transitioned STOPPED → RUNNING                  |
-
-The first row is the negative control — proves the managed endpoint can't
-be pinned. Rows 2-4 are the positive results — this server's pin works
-across every deployment mode.
-
----
-
 # Code walkthrough
 
 ## `server.py` — the MCP server (~145 lines)
@@ -361,8 +340,9 @@ and session-ID lifecycle.
 
 Spawns `server.py` as a subprocess, sends an `initialize` + `tools/call`
 sequence over stdio, captures warehouse state before and after, and
-reports PASS/FAIL based on the state delta. Documented in
-[Verification methodology](#verification-methodology) above.
+reports PASS/FAIL based on the state delta. State-delta verification is
+robust because it doesn't depend on parsing response shapes — just on
+observable side effects on the Databricks control plane.
 
 ## `app.yaml` — Databricks Apps deployment config
 
