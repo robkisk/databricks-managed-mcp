@@ -1,0 +1,25 @@
+# Databricks Apps configuration.
+#
+# Tells the Databricks Apps platform how to run the server inside the
+# container. Two things matter here:
+#
+#   1. `command` — what to execute. `uv run server.py` uses PEP 723 inline
+#      deps, so the container doesn't need a pre-built virtualenv. Cold
+#      starts take ~5s while uv resolves dependencies the first time.
+#
+#   2. `env[].valueFrom: warehouse` — pulls DATABRICKS_WAREHOUSE_ID from a
+#      bound warehouse resource. The binding is created out-of-band (DAB
+#      resource block, `databricks apps update --resources-warehouses`, or
+#      the Apps UI). Two upsides over hard-coding the ID here:
+#        - The platform automatically grants the app's service principal
+#          CAN_USE on the bound warehouse — no manual permission step.
+#        - The same app config works across workspaces (dev/staging/prod)
+#          because each environment binds its own warehouse.
+#
+# The server auto-detects HTTP-vs-stdio transport at startup via the
+# DATABRICKS_APP_PORT env var (injected by the platform). No transport
+# flag needed in this file.
+command: ["uv", "run", "server.py"]
+env:
+  - name: DATABRICKS_WAREHOUSE_ID
+    valueFrom: warehouse

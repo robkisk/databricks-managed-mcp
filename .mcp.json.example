@@ -1,0 +1,31 @@
+{
+  "_comment": "Copy this file to .mcp.json in your project root (or merge into an existing one). Pick ONE of the two entries below depending on how you want to run the server — or include both with different names. Replace every <placeholder> with your real values, then restart Claude Code so the MCP server loads.",
+
+  "mcpServers": {
+    "_LOCAL_STDIO_MODE": {
+      "_description": "Runs server.py directly as a stdio subprocess. Fastest setup, single-user, executes SQL as YOUR Databricks identity. Replace the absolute path and the two env values.",
+      "command": "uv",
+      "args": [
+        "run",
+        "<absolute-path-to-this-repo>/server.py"
+      ],
+      "env": {
+        "DATABRICKS_CONFIG_PROFILE": "<your-profile>",
+        "DATABRICKS_WAREHOUSE_ID": "<your-warehouse-id>"
+      }
+    },
+
+    "_DEPLOYED_APP_MODE": {
+      "_description": "Bridges stdio -> HTTPS via mcp_proxy.py to a Databricks App you've deployed. Multi-user friendly, executes SQL as the app's service principal, warehouse is bound server-side. Replace the absolute path, the deployed URL, and the profile. NO env block needed — the deployed app already has its own DATABRICKS_WAREHOUSE_ID from the bound warehouse resource.",
+      "command": "uv",
+      "args": [
+        "run",
+        "<absolute-path-to-this-repo>/mcp_proxy.py",
+        "--server-url",
+        "https://<app-name>-<workspace-id>.<cloud>.databricksapps.com/mcp",
+        "--profile",
+        "<your-profile>"
+      ]
+    }
+  }
+}

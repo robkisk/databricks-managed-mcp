@@ -1,0 +1,36 @@
+# Secrets — .env.example is committed, .env is not
+.env
+.env.local
+*.local
+
+# A real .mcp.json is user-specific; .mcp.json.example is the template
+.mcp.json
+
+# `databricks sync` writes state here — leaks workspace host + user email
+.databricks/
+.databrickscfg
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+
+# uv / virtualenvs
+.venv/
+venv/
+env/
+uv.lock
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
