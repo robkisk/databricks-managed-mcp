@@ -6,7 +6,9 @@ Databricks App and reach it through the included OAuth proxy.
 
 > **Prefer the visual guide?** Open [`guide.html`](guide.html) for a
 > branded, self-contained version of this content with the architecture
-> diagrams and side-by-side option comparison.
+> diagrams and side-by-side option comparison. For Option A specifically
+> (per-user default warehouse override — UI, CLI, and REST API), see
+> [`default-warehouse-override.html`](default-warehouse-override.html).
 
 ## The problem this solves
 

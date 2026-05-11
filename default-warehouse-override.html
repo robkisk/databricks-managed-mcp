@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Set a Default SQL Warehouse per User — Databricks</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* Reset + tokens (matches main guide) */
+  *, *::before, *::after { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+    color: #1B3139;
+    background: #F9F7F4;
+    line-height: 1.55;
+    font-size: 17px;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  :root {
+    --navy-900: #0E1416;
+    --navy-800: #1B3139;
+    --navy-700: #2F4550;
+    --slate-500: #6B7785;
+    --oat-light: #F9F7F4;
+    --oat-medium: #EFEAE2;
+    --white: #FFFFFF;
+    --lava-600: #FF3621;
+    --lava-700: #C42818;
+    --green-700: #00A972;
+    --border-soft: #E5E1D9;
+    --code-bg: #1B3139;
+    --code-text: #EFEAE2;
+    --shadow-card: 0 1px 2px rgba(14, 20, 22, 0.04), 0 8px 24px rgba(14, 20, 22, 0.04);
+  }
+  a { color: var(--lava-600); text-decoration: none; border-bottom: 1px solid transparent; transition: border-color 120ms ease; }
+  a:hover { border-bottom-color: var(--lava-600); }
+  code, pre { font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
+  code { font-size: 0.9em; background: rgba(27, 49, 57, 0.06); padding: 1px 6px; border-radius: 4px; color: var(--navy-800); }
+
+  .container { max-width: 920px; margin: 0 auto; padding: 0 32px; }
+  section { padding: 88px 0; }
+  section.tight { padding: 56px 0; }
+
+  /* Hero */
+  .hero {
+    background:
+      radial-gradient(ellipse at top right, rgba(255, 54, 33, 0.12), transparent 50%),
+      radial-gradient(ellipse at bottom left, rgba(0, 169, 114, 0.10), transparent 50%),
+      linear-gradient(180deg, var(--navy-900) 0%, var(--navy-800) 100%);
+    color: var(--oat-light);
+    padding: 88px 0 76px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: var(--lava-600); }
+  .eyebrow {
+    font-size: 13px; font-weight: 600; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--lava-600); margin-bottom: 16px;
+  }
+  .hero h1 {
+    font-size: 52px; line-height: 1.08; margin: 0 0 24px; font-weight: 600;
+    letter-spacing: -0.02em; color: var(--white); max-width: 800px;
+  }
+  .hero h1 .accent { color: var(--lava-600); }
+  .hero .lede {
+    font-size: 19px; line-height: 1.5; color: rgba(249, 247, 244, 0.85);
+    max-width: 720px; margin: 0 0 32px;
+  }
+  .hero .meta {
+    display: flex; flex-wrap: wrap; gap: 24px; align-items: center;
+    margin-top: 36px; padding-top: 28px;
+    border-top: 1px solid rgba(249, 247, 244, 0.12);
+    font-size: 14px; color: rgba(249, 247, 244, 0.6);
+  }
+  .hero .meta strong { color: var(--oat-light); font-weight: 500; }
+  .cta-row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px 22px; border-radius: 6px; font-weight: 500; font-size: 15px;
+    transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+    border-bottom: none !important;
+  }
+  .btn-primary { background: var(--lava-600); color: var(--white); }
+  .btn-primary:hover { background: var(--lava-700); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(255, 54, 33, 0.25); }
+  .btn-secondary { background: rgba(249, 247, 244, 0.08); color: var(--white); border: 1px solid rgba(249, 247, 244, 0.18); }
+  .btn-secondary:hover { background: rgba(249, 247, 244, 0.14); }
+
+  /* Headings */
+  h2 {
+    font-size: 34px; font-weight: 600; letter-spacing: -0.015em;
+    line-height: 1.15; margin: 0 0 16px; color: var(--navy-800);
+  }
+  h2 .num {
+    display: inline-block; font-size: 14px; font-weight: 600;
+    letter-spacing: 0.12em; color: var(--lava-600); text-transform: uppercase;
+    margin-right: 12px; vertical-align: middle; transform: translateY(-2px);
+  }
+  h3 {
+    font-size: 22px; font-weight: 600; letter-spacing: -0.01em;
+    margin: 40px 0 12px; color: var(--navy-800);
+  }
+  h4 {
+    font-size: 16px; font-weight: 600; margin: 24px 0 8px;
+    color: var(--navy-800);
+  }
+  .section-lede {
+    font-size: 18px; color: var(--slate-500); max-width: 740px;
+    margin: 0 0 36px; line-height: 1.55;
+  }
+
+  /* Pills */
+  .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 32px; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: 999px;
+    background: var(--oat-medium); color: var(--navy-800);
+    font-size: 13px; font-weight: 500;
+  }
+
+  /* Cards / tables / pre / callout (same patterns as main guide) */
+  .table-wrap {
+    background: var(--white); border-radius: 10px; border: 1px solid var(--border-soft);
+    overflow: hidden; margin: 24px 0; box-shadow: var(--shadow-card);
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; padding: 14px 20px; border-bottom: 1px solid var(--border-soft); vertical-align: top; }
+  th {
+    background: var(--oat-medium); font-weight: 600; color: var(--navy-800);
+    font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  tr:last-child td { border-bottom: none; }
+  td code { background: rgba(27, 49, 57, 0.06); }
+
+  pre {
+    background: var(--code-bg); color: var(--code-text);
+    padding: 20px 24px; border-radius: 8px; overflow-x: auto;
+    font-size: 13.5px; line-height: 1.6; margin: 18px 0;
+    box-shadow: var(--shadow-card);
+  }
+  pre code { background: transparent; color: inherit; padding: 0; font-size: inherit; }
+
+  .callout {
+    border-left: 3px solid var(--lava-600); background: var(--white);
+    padding: 20px 28px; border-radius: 0 8px 8px 0; margin: 24px 0;
+    box-shadow: var(--shadow-card);
+  }
+  .callout .callout-label {
+    font-size: 12px; font-weight: 600; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--lava-600); margin-bottom: 6px;
+  }
+  .callout p:last-child { margin-bottom: 0; }
+  .callout.green { border-left-color: var(--green-700); }
+  .callout.green .callout-label { color: var(--green-700); }
+
+  /* Method cards (UI / CLI / API) */
+  .method {
+    background: var(--white); border-radius: 12px;
+    border: 1px solid var(--border-soft); box-shadow: var(--shadow-card);
+    margin: 24px 0; overflow: hidden;
+  }
+  .method-head {
+    padding: 22px 28px;
+    border-bottom: 1px solid var(--border-soft);
+    display: flex; align-items: center; gap: 16px;
+    background: var(--oat-light);
+  }
+  .method-num {
+    width: 36px; height: 36px; border-radius: 8px;
+    background: var(--navy-800); color: var(--oat-light);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 600; font-size: 14px;
+    font-family: 'IBM Plex Mono', monospace; flex-shrink: 0;
+  }
+  .method-title { font-weight: 600; color: var(--navy-800); font-size: 17px; }
+  .method-sub { font-size: 13px; color: var(--slate-500); margin-top: 2px; }
+  .method-body { padding: 12px 28px 28px; font-size: 15px; }
+  .method-body h4:first-of-type { margin-top: 16px; }
+  .method-body ol { padding-left: 22px; margin: 12px 0; }
+  .method-body ol li { padding: 4px 0; }
+
+  /* Backgrounds */
+  .bg-white { background: var(--white); }
+  .bg-oat { background: var(--oat-light); }
+  .bg-dark {
+    background: linear-gradient(180deg, var(--navy-800) 0%, var(--navy-900) 100%);
+    color: var(--oat-light);
+  }
+  .bg-dark h2, .bg-dark h3, .bg-dark h4 { color: var(--white); }
+  .bg-dark .section-lede { color: rgba(249, 247, 244, 0.7); }
+
+  /* Decision two-col */
+  .decision-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
+    margin: 28px 0;
+  }
+  .decision-card {
+    background: rgba(249, 247, 244, 0.06);
+    border: 1px solid rgba(249, 247, 244, 0.1);
+    border-radius: 12px; padding: 26px;
+  }
+  .decision-card h4 { color: var(--white); font-size: 18px; margin: 0 0 6px; }
+  .decision-card .decision-sub {
+    color: rgba(249, 247, 244, 0.55); font-size: 13px;
+    margin-bottom: 16px; font-weight: 500;
+  }
+  .decision-card ul {
+    list-style: none; padding: 0; margin: 0;
+    color: rgba(249, 247, 244, 0.85); font-size: 14px;
+  }
+  .decision-card ul li {
+    padding: 6px 0 6px 22px; position: relative;
+  }
+  .decision-card ul li::before {
+    content: '→'; position: absolute; left: 0; color: var(--lava-600); font-weight: 600;
+  }
+
+  /* Footer */
+  footer {
+    background: var(--navy-900); color: rgba(249, 247, 244, 0.6);
+    padding: 52px 0; font-size: 14px;
+  }
+  footer h4 {
+    color: var(--white); font-size: 14px; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase; margin: 0 0 14px;
+  }
+  footer .footer-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 48px; align-items: start; }
+  footer a { color: var(--oat-light); border-bottom: 1px solid rgba(249, 247, 244, 0.3); }
+  footer a:hover { border-bottom-color: var(--lava-600); }
+  footer ul { list-style: none; padding: 0; margin: 0; }
+  footer li { padding: 4px 0; }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    body { font-size: 16px; }
+    .container { padding: 0 20px; }
+    section { padding: 56px 0; }
+    .hero { padding: 56px 0; }
+    .hero h1 { font-size: 34px; }
+    .hero .lede { font-size: 17px; }
+    h2 { font-size: 26px; }
+    .decision-grid { grid-template-columns: 1fr; }
+    footer .footer-grid { grid-template-columns: 1fr; gap: 28px; }
+    table { font-size: 14px; }
+    th, td { padding: 11px 14px; }
+  }
+
+  /* Print */
+  @media print {
+    body { background: white; color: black; font-size: 11pt; }
+    .hero, .bg-dark { background: white !important; color: black !important; }
+    .hero h1, .bg-dark h2, .bg-dark h3 { color: black !important; }
+    .hero .lede, .bg-dark .section-lede { color: #333 !important; }
+    pre { background: #f5f5f5 !important; color: #000 !important; box-shadow: none; border: 1px solid #ccc; }
+    .btn { display: none; }
+    footer { background: white; color: black; }
+    footer a { color: black; }
+    section { padding: 28px 0; page-break-inside: avoid; }
+    .table-wrap, .callout, .method, .decision-card { box-shadow: none; border: 1px solid #ddd; page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ==================================================================
+     HERO
+     ================================================================== -->
+<header class="hero">
+  <div class="container">
+    <div class="eyebrow">Databricks Admin · Per-User Configuration</div>
+    <h1>Set a default SQL warehouse <span class="accent">per user</span></h1>
+    <p class="lede">
+      The native, no-custom-code path for pinning a Databricks user's SQL queries to a specific warehouse. Honored by the managed <code style="color:#FF3621;background:rgba(255,54,33,0.12);">/api/2.0/mcp/sql</code> MCP endpoint, the SQL editor, AI/BI dashboards, Genie, alerts, and Catalog Explorer. Three configuration paths: UI, CLI, and REST API.
+    </p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="#cli">
+        Jump to CLI commands
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+      </a>
+      <a class="btn btn-secondary" href="https://robkisk.github.io/databricks-mcp-warehouse-pin/guide.html">Read the full pinning guide</a>
+    </div>
+    <div class="meta">
+      <span><strong>Audience:</strong> Workspace admins, data platform owners, end users</span>
+      <span><strong>Scope:</strong> Per-user default warehouse override</span>
+      <span><strong>Verified:</strong> Against live Databricks service</span>
+    </div>
+  </div>
+</header>
+
+<!-- ==================================================================
+     SECTION 1 — WHAT THIS DOES
+     ================================================================== -->
+<section class="bg-oat tight" id="what">
+  <div class="container">
+    <h2><span class="num">01</span>What it does</h2>
+    <p class="section-lede">A per-user default warehouse override tells every Databricks surface that consumes a "default warehouse" to route that user's queries to a specific compute resource — without per-call client configuration.</p>
+
+    <div class="pill-row">
+      <span class="pill">SQL editor</span>
+      <span class="pill">AI/BI dashboards</span>
+      <span class="pill">Genie</span>
+      <span class="pill">Alerts</span>
+      <span class="pill">Catalog Explorer</span>
+      <span class="pill" style="background:rgba(255,54,33,0.1);color:var(--lava-700);">Managed MCP <code style="color:inherit;background:transparent;padding:0;">/api/2.0/mcp/sql</code></span>
+    </div>
+
+    <p>Without an override, each surface falls back to the workspace's configured default warehouse (Settings → Compute → Default warehouse), and the managed MCP applies its priority-tier heuristic (any RUNNING warehouse → any STOPPED, serverless first, "shared"-named first, etc.).</p>
+
+    <p>With an override, the user gets <strong>predictable, deterministic warehouse routing</strong> across all these surfaces. The override sits at the workspace level keyed on user identity — admins can set overrides for any user, users can set their own.</p>
+  </div>
+</section>
+
+<!-- ==================================================================
+     SECTION 2 — WHEN TO USE IT
+     ================================================================== -->
+<section class="bg-dark" id="when">
+  <div class="container">
+    <h2><span class="num">02</span>When to use it (and when not to)</h2>
+    <p class="section-lede">This override is the right answer for most warehouse-pinning needs on Databricks. It has one structural limit: it's keyed on user identity, not on workload or agent. If you need different agents owned by the same user to route to different warehouses, you need a custom MCP server instead.</p>
+
+    <div class="decision-grid">
+      <div class="decision-card">
+        <h4>Use per-user override</h4>
+        <div class="decision-sub">Native API, no custom code</div>
+        <ul>
+          <li>Cost attribution by team or department</li>
+          <li>Compliance audit trails per user</li>
+          <li>Per-team warehouse isolation (one user = one team = one warehouse)</li>
+          <li>Predictable SLA-bound compute</li>
+          <li>Setting defaults for users who don't choose for themselves</li>
+        </ul>
+      </div>
+      <div class="decision-card">
+        <h4>Custom MCP server instead</h4>
+        <div class="decision-sub">When user-scoped isn't enough</div>
+        <ul>
+          <li>One user runs multiple agents that should each route to different warehouses</li>
+          <li>You lack admin access to set overrides for other users</li>
+          <li>The agent should own the warehouse, not the user (shared SP-based agents)</li>
+          <li>You need custom tool behavior beyond <code>execute_sql</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <p style="margin-top:32px;font-size:14px;color:rgba(249,247,244,0.65);">For the custom-MCP path, see <a href="https://robkisk.github.io/databricks-mcp-warehouse-pin/guide.html" style="color:var(--oat-light);border-bottom-color:rgba(249,247,244,0.3);">the main warehouse-pinning guide</a>.</p>
+  </div>
+</section>
+
+<!-- ==================================================================
+     SECTION 3 — UI
+     ================================================================== -->
+<section class="bg-white" id="ui">
+  <div class="container">
+    <h2><span class="num">03</span>Configure via the UI</h2>
+    <p class="section-lede">Two surfaces: the workspace-level default warehouse for everyone, and the per-user override that supersedes it for specific users.</p>
+
+    <div class="method">
+      <div class="method-head">
+        <div class="method-num">A</div>
+        <div>
+          <div class="method-title">Workspace-level default warehouse (admin only)</div>
+          <div class="method-sub">Applies to all users who don't have a per-user override set</div>
+        </div>
+      </div>
+      <div class="method-body">
+        <ol>
+          <li>Click your <strong>username in the top bar</strong> &rarr; <strong>Settings</strong></li>
+          <li>In the left sidebar, click <strong>Compute</strong></li>
+          <li>Use the dropdown next to <strong>Default warehouse</strong> to select your target warehouse</li>
+          <li>The change applies immediately to SQL editor, AI/BI, Genie, Alerts, Catalog Explorer, and the managed MCP for all un-overridden users</li>
+        </ol>
+        <div class="callout">
+          <div class="callout-label">Workspace-default scope</div>
+          <p>The workspace default is the fallback. Any user with a per-user override (see Path B below) bypasses this setting entirely. To force everyone onto the same warehouse, leave per-user overrides unset or use a script to set them uniformly.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="method">
+      <div class="method-head">
+        <div class="method-num">B</div>
+        <div>
+          <div class="method-title">Per-user default warehouse override</div>
+          <div class="method-sub">Users set their own; admins set for any user</div>
+        </div>
+      </div>
+      <div class="method-body">
+        <p style="margin:8px 0 16px;">As of May 2026, the UI for per-user overrides is documented as available but the exact menu path isn't fully detailed in the public admin docs. Users can typically set their own default via the SQL editor warehouse picker (a "set as my default" affordance appears alongside the warehouse selector). Admins managing other users' overrides should use the CLI or REST API paths below for reliable, scriptable control.</p>
+
+        <h4>What we know</h4>
+        <ol>
+          <li>Users see their effective warehouse in the SQL editor's warehouse picker</li>
+          <li>The CLI and REST API are the authoritative surfaces for admin-managed overrides</li>
+          <li>Override changes propagate to all consuming surfaces (SQL editor, MCP, etc.) on the next query</li>
+        </ol>
+
+        <div class="callout">
+          <div class="callout-label">Recommendation</div>
+          <p>For admin-managed overrides — e.g., setting a team's warehouse for every team member as part of onboarding — use the CLI or REST API. They're scriptable, version-controllable via Terraform, and produce auditable change logs.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================================================================
+     SECTION 4 — CLI
+     ================================================================== -->
+<section class="bg-oat" id="cli">
+  <div class="container">
+    <h2><span class="num">04</span>Configure via the Databricks CLI</h2>
+    <p class="section-lede">The Databricks CLI v0.250+ ships five subcommands under <code>databricks warehouses</code> for managing per-user overrides. The CLI is the fastest path for one-off configuration and scriptable rollouts.</p>
+
+    <h3>Prerequisites</h3>
+    <pre><code># Install
+brew install databricks/tap/databricks
+
+# Authenticate (creates profile in ~/.databrickscfg)
+databricks auth login --host https://&lt;your-workspace&gt;.cloud.databricks.com
+
+# Find a warehouse ID
+databricks warehouses list --profile &lt;your-profile&gt;</code></pre>
+
+    <h3>Set your own override</h3>
+    <pre><code># Create a new CUSTOM override pointing at a specific warehouse
+databricks warehouses create-default-warehouse-override \
+  me CUSTOM \
+  --warehouse-id &lt;warehouse-id&gt; \
+  --profile &lt;your-profile&gt;</code></pre>
+
+    <p>The <code>me</code> shorthand resolves to your authenticated user. Type <code>CUSTOM</code> means "pin to this specific warehouse"; the alternative <code>LAST_SELECTED</code> uses the most recently selected warehouse instead (sticky behavior, no explicit pin).</p>
+
+    <h3>Read your current override</h3>
+    <pre><code>databricks warehouses get-default-warehouse-override \
+  default-warehouse-overrides/me \
+  --profile &lt;your-profile&gt;
+
+# Output:
+# {
+#   "default_warehouse_override_id": "&lt;numeric-user-id&gt;",
+#   "name": "default-warehouse-overrides/&lt;numeric-user-id&gt;",
+#   "type": "CUSTOM",
+#   "warehouse_id": "&lt;your-warehouse-id&gt;"
+# }</code></pre>
+
+    <h3>Update an existing override</h3>
+    <pre><code># Change the warehouse target (uses field mask: "*" = update all fields)
+databricks warehouses update-default-warehouse-override \
+  default-warehouse-overrides/me "*" CUSTOM \
+  --warehouse-id &lt;new-warehouse-id&gt; \
+  --profile &lt;your-profile&gt;
+
+# Or switch type from CUSTOM to LAST_SELECTED (no warehouse-id needed)
+databricks warehouses update-default-warehouse-override \
+  default-warehouse-overrides/me "*" LAST_SELECTED \
+  --profile &lt;your-profile&gt;</code></pre>
+
+    <h3>List all overrides (admin only)</h3>
+    <pre><code>databricks warehouses list-default-warehouse-overrides \
+  --profile &lt;your-profile&gt;</code></pre>
+
+    <h3>Set an override for another user (admin only)</h3>
+    <pre><code># Replace 'me' with the target user's numeric ID
+# Get user IDs from: databricks workspace-users list (or SCIM API)
+databricks warehouses create-default-warehouse-override \
+  &lt;user-id&gt; CUSTOM \
+  --warehouse-id &lt;warehouse-id&gt; \
+  --profile &lt;admin-profile&gt;</code></pre>
+
+    <h3>Delete an override</h3>
+    <pre><code>databricks warehouses delete-default-warehouse-override \
+  default-warehouse-overrides/me \
+  --profile &lt;your-profile&gt;
+
+# After deletion, the user falls back to the workspace-level default warehouse</code></pre>
+
+    <div class="callout green">
+      <div class="callout-label">Idempotent upsert pattern</div>
+      <p>For scripted rollouts (e.g., setting overrides for every member of a team), use <code>update-default-warehouse-override</code> with the <code>--allow-missing</code> flag. When the override doesn't exist, the flag tells the API to create one instead of failing. This lets you write a single "set the override to X" script that works whether the user has an existing override or not.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ==================================================================
+     SECTION 5 — REST API
+     ================================================================== -->
+<section class="bg-white" id="api">
+  <div class="container">
+    <h2><span class="num">05</span>Configure via the REST API</h2>
+    <p class="section-lede">All five operations live under <code>/api/warehouses/v1/default-warehouse-overrides</code>. Same workspace OAuth bearer-token auth as any other Databricks API. The CLI is a thin wrapper around these endpoints.</p>
+
+    <h3>Endpoint inventory</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Method</th>
+            <th>Path</th>
+            <th>Purpose</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>POST</code></td>
+            <td><code>/api/warehouses/v1/default-warehouse-overrides?default_warehouse_override_id=&lt;id&gt;</code></td>
+            <td>Create override for a user (id can be <code>me</code> or numeric user ID)</td>
+          </tr>
+          <tr>
+            <td><code>GET</code></td>
+            <td><code>/api/warehouses/v1/default-warehouse-overrides/&lt;id&gt;</code></td>
+            <td>Read a single override</td>
+          </tr>
+          <tr>
+            <td><code>PATCH</code></td>
+            <td><code>/api/warehouses/v1/default-warehouse-overrides/&lt;id&gt;?update_mask=&lt;mask&gt;</code></td>
+            <td>Update (use <code>*</code> for all fields)</td>
+          </tr>
+          <tr>
+            <td><code>DELETE</code></td>
+            <td><code>/api/warehouses/v1/default-warehouse-overrides/&lt;id&gt;</code></td>
+            <td>Remove override (fall back to workspace default)</td>
+          </tr>
+          <tr>
+            <td><code>GET</code></td>
+            <td><code>/api/warehouses/v1/default-warehouse-overrides</code></td>
+            <td>List all overrides (admin only)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Example: create a CUSTOM override</h3>
+    <pre><code>POST /api/warehouses/v1/default-warehouse-overrides?default_warehouse_override_id=me
+Authorization: Bearer &lt;your-token&gt;
+Content-Type: application/json
+
+{
+  "type": "CUSTOM",
+  "warehouse_id": "&lt;warehouse-id&gt;"
+}</code></pre>
+
+    <p style="font-size:13px;color:var(--slate-500);margin:-8px 0 24px;">Get a bearer token via <code>databricks auth token --host &lt;workspace-url&gt;</code>.</p>
+
+    <h3>Example: update via PATCH with field mask</h3>
+    <pre><code>PATCH /api/warehouses/v1/default-warehouse-overrides/me?update_mask=*
+Authorization: Bearer &lt;your-token&gt;
+Content-Type: application/json
+
+{
+  "type": "CUSTOM",
+  "warehouse_id": "&lt;new-warehouse-id&gt;"
+}</code></pre>
+
+    <p>The <code>update_mask</code> query parameter follows Google Cloud Resource Manager conventions: <code>*</code> updates all fields, comma-separated field names update only those (e.g., <code>?update_mask=warehouse_id</code> to change just the target without touching the type).</p>
+
+    <h3>Example: curl one-liner</h3>
+    <pre><code>HOST=&lt;your-workspace-host&gt;            # e.g. https://abc.cloud.databricks.com
+TOKEN=$(databricks auth token --host "$HOST" | jq -r .access_token)
+WAREHOUSE_ID=&lt;your-warehouse-id&gt;
+
+curl -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"type\":\"CUSTOM\",\"warehouse_id\":\"$WAREHOUSE_ID\"}" \
+  "$HOST/api/warehouses/v1/default-warehouse-overrides?default_warehouse_override_id=me"</code></pre>
+
+    <h3>Permissions</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Operation</th>
+            <th>User permission required</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Manage your own override</td><td>Any workspace user</td></tr>
+          <tr><td>Read another user's override</td><td>Workspace admin</td></tr>
+          <tr><td>Set / update / delete another user's override</td><td>Workspace admin</td></tr>
+          <tr><td>List all overrides</td><td>Workspace admin</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>The target warehouse must also be accessible to the override's user — i.e., the user needs <code>CAN_USE</code> permission on the warehouse. Setting an override pointing at a warehouse the user can't reach won't fail at create-time, but queries will fail when they try to start.</p>
+  </div>
+</section>
+
+<!-- ==================================================================
+     SECTION 6 — VERIFY
+     ================================================================== -->
+<section class="bg-oat" id="verify">
+  <div class="container">
+    <h2><span class="num">06</span>Verify it works</h2>
+    <p class="section-lede">Three layers of verification — each tighter than the last. Use whichever fits your confidence requirement.</p>
+
+    <h3>Layer 1 — confirm the override is recorded</h3>
+    <pre><code>databricks warehouses get-default-warehouse-override \
+  default-warehouse-overrides/me \
+  --profile &lt;your-profile&gt;</code></pre>
+    <p>Returns the override's <code>type</code> and <code>warehouse_id</code>. If <code>warehouse_id</code> matches your intended target, the override is stored correctly.</p>
+
+    <h3>Layer 2 — confirm the algorithm picks it</h3>
+    <pre><code>databricks experimental aitools tools get-default-warehouse --profile &lt;your-profile&gt;</code></pre>
+    <p>This CLI command resolves the same default-warehouse lookup that the managed MCP uses. The returned warehouse ID should match your override target. If it doesn't, the override is recorded but not winning the priority lookup — file a support ticket with both values.</p>
+
+    <h3>Layer 3 — observe the routing end-to-end</h3>
+    <p>Stop your target warehouse and every other warehouse the lookup might reach. Send a query through the managed MCP (or any consuming surface). The target warehouse should transition <code>STOPPED &rarr; RUNNING</code>, and no other warehouse should be touched.</p>
+
+    <pre><code># Stop all warehouses to baseline
+for WID in $(databricks warehouses list --profile &lt;p&gt; -o json | jq -r '.[].id'); do
+  databricks warehouses stop "$WID" --profile &lt;p&gt; &
+done; wait
+
+# Send a query through any default-warehouse-using surface (MCP, SQL editor, etc.)
+# Then re-list warehouses and check which one woke up:
+databricks warehouses list --profile &lt;p&gt; -o json | jq '.[] | {id, state, name}'</code></pre>
+
+    <div class="callout green">
+      <div class="callout-label">Why state-delta verification</div>
+      <p>Layer 1 confirms persistence, Layer 2 confirms the resolver, Layer 3 confirms the consuming surface honors what the resolver returns. State-delta verification (Layer 3) is robust because warehouse state transitions are observable on the Databricks control plane and can't be faked by a misbehaving downstream component.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ==================================================================
+     SECTION 7 — REFERENCE
+     ================================================================== -->
+<section class="bg-white" id="reference">
+  <div class="container">
+    <h2><span class="num">07</span>Reference</h2>
+
+    <h3>Override types</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Type</th><th>Behavior</th><th>Use when</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>CUSTOM</code></td>
+            <td>Pin to the specific <code>warehouse_id</code> field</td>
+            <td>You want explicit, predictable routing — admin-managed or user-set with intent</td>
+          </tr>
+          <tr>
+            <td><code>LAST_SELECTED</code></td>
+            <td>Use whichever warehouse the user most recently chose</td>
+            <td>You want sticky behavior — user's last UI selection persists across sessions</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Scoping rules</h3>
+    <ul style="font-size:15px;color:var(--navy-700);">
+      <li><strong>One override per user per workspace.</strong> Same user in different workspaces has independent overrides.</li>
+      <li><strong>User-level override beats workspace default.</strong> The workspace default is only consulted when no override exists.</li>
+      <li><strong>Workload-level beats user-level when present.</strong> A specific tool (e.g., a notebook with an attached warehouse) overrides the user default for that workload.</li>
+      <li><strong>No per-agent or per-session scope.</strong> Every query from a user with an override goes to the same warehouse, regardless of which agent or MCP session initiates it.</li>
+    </ul>
+
+    <h3>Terraform support</h3>
+    <p>Databricks ships a Terraform data source <code>databricks_warehouses_default_warehouse_override</code> for reading existing overrides. As of May 2026 the corresponding resource for declarative creation isn't shipped in the provider — use the CLI or REST API for now. Track the Terraform provider changelog for resource availability.</p>
+
+    <h3>Related Databricks documentation</h3>
+    <ul style="font-size:15px;color:var(--navy-700);list-style:none;padding-left:0;">
+      <li style="padding:6px 0;">→ <a href="https://docs.databricks.com/aws/en/admin/sql/">Admin SQL settings overview</a></li>
+      <li style="padding:6px 0;">→ <a href="https://docs.databricks.com/api/workspace/warehouses/updatedefaultwarehouseoverride">REST API: updateDefaultWarehouseOverride</a></li>
+      <li style="padding:6px 0;">→ <a href="https://docs.databricks.com/api/workspace/warehouses">Full SQL Warehouses API reference</a></li>
+      <li style="padding:6px 0;">→ <a href="https://docs.databricks.com/aws/en/generative-ai/mcp/">Databricks MCP overview</a></li>
+    </ul>
+  </div>
+</section>
+
+<!-- ==================================================================
+     FOOTER
+     ================================================================== -->
+<footer>
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <h4>About this guide</h4>
+        <p>Focused reference for the per-user default warehouse override on Databricks — the native, no-custom-code path to predictable warehouse routing. The override is honored by every Databricks surface that consumes a default warehouse, including the managed <code style="color:var(--oat-light);">/api/2.0/mcp/sql</code> MCP endpoint.</p>
+        <p style="margin-top:14px;">For pinning patterns this override can't cover (per-agent routing, workload-scoped pinning, custom tool surfaces), see the full warehouse-pinning guide.</p>
+      </div>
+      <div>
+        <h4>Links</h4>
+        <ul>
+          <li><a href="https://robkisk.github.io/databricks-mcp-warehouse-pin/guide.html">Full pinning guide (both options)</a></li>
+          <li><a href="https://github.com/robkisk/databricks-mcp-warehouse-pin">Reference implementation on GitHub</a></li>
+          <li><a href="https://docs.databricks.com/aws/en/admin/sql/">Databricks admin SQL docs</a></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

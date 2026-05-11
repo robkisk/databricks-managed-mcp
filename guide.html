@@ -783,7 +783,7 @@
     <p class="section-lede">Pick the one that matches your scope. Option A is native and simpler; Option B handles cases Option A can't.</p>
 
     <h3>Option A &mdash; Per-user default warehouse override (recommended when applicable)</h3>
-    <p>The Databricks SQL Warehouses API lets admins (and users for themselves) configure a default warehouse per user. The managed <code>/api/2.0/mcp/sql</code> endpoint honors this override when routing that user's queries. Verified end-to-end against the live service.</p>
+    <p>The Databricks SQL Warehouses API lets admins (and users for themselves) configure a default warehouse per user. The managed <code>/api/2.0/mcp/sql</code> endpoint honors this override when routing that user's queries. Verified end-to-end against the live service. Full walkthrough at <a href="default-warehouse-override.html">the Option A focused guide</a>, including UI, CLI, and REST API paths.</p>
 
     <pre><code>databricks warehouses create-default-warehouse-override \
   me CUSTOM \
