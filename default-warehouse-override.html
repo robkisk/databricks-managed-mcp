@@ -591,11 +591,101 @@ curl -X POST \
 </section>
 
 <!-- ==================================================================
-     SECTION 6 — VERIFY
+     SECTION 6 — WIRE INTO CLAUDE CODE / CURSOR
+     ================================================================== -->
+<section class="bg-dark" id="wire">
+  <div class="container">
+    <h2><span class="num">06</span>Wire the managed MCP into Claude Code or Cursor</h2>
+    <p class="section-lede">After the override is set, you don't need any client-side configuration for warehouse routing — the managed MCP looks up the override server-side on every request. You just need to point your MCP client at the managed endpoint with workspace OAuth. Two paths: a stdio proxy that uses your Databricks CLI authentication (works for both clients), or Cursor's native HTTP + OAuth (Cursor-only).</p>
+
+    <h3>Managed MCP endpoint</h3>
+    <pre><code>https://&lt;your-workspace-host&gt;/api/2.0/mcp/sql</code></pre>
+    <p style="font-size:14px;color:rgba(249,247,244,0.7);">Note the path ends in <code style="color:var(--oat-light);background:rgba(249,247,244,0.08);">/mcp/sql</code> with no warehouse ID. The override is what tells the server where to route — the URL stays the same for every user.</p>
+
+    <div class="method" style="background:rgba(249,247,244,0.04);border-color:rgba(249,247,244,0.1);">
+      <div class="method-head" style="background:rgba(249,247,244,0.06);border-bottom-color:rgba(249,247,244,0.1);">
+        <div class="method-num">A</div>
+        <div>
+          <div class="method-title" style="color:var(--white);">Stdio proxy via <code>uv run mcp_proxy.py</code></div>
+          <div class="method-sub" style="color:rgba(249,247,244,0.55);">Works in Claude Code and Cursor. Uses your <code style="color:inherit;background:rgba(249,247,244,0.08);">~/.databrickscfg</code> profile for auth.</div>
+        </div>
+      </div>
+      <div class="method-body" style="color:rgba(249,247,244,0.85);">
+        <p style="margin:8px 0 16px;">MCP clients speak stdio (subprocess + stdin/stdout JSON-RPC). The managed MCP endpoint speaks HTTPS with Databricks OAuth. <code style="color:var(--oat-light);background:rgba(249,247,244,0.08);">mcp_proxy.py</code> bridges the two — it reads JSON-RPC from stdin, attaches an OAuth bearer token from your CLI profile, and POSTs to the workspace endpoint.</p>
+
+        <h4 style="color:var(--white);margin-top:16px;">Get the proxy</h4>
+        <pre><code>git clone https://github.com/robkisk/databricks-mcp-warehouse-pin.git
+# The proxy lives at databricks-mcp-warehouse-pin/mcp_proxy.py
+# It uses PEP 723 inline deps — no install step needed</code></pre>
+
+        <h4 style="color:var(--white);">Add to <code>.mcp.json</code></h4>
+<pre><code>{
+  "mcpServers": {
+    "databricks-sql": {
+      "command": "uv",
+      "args": [
+        "run",
+        "/absolute/path/to/databricks-mcp-warehouse-pin/mcp_proxy.py",
+        "--path",
+        "/api/2.0/mcp/sql",
+        "--profile",
+        "&lt;your-profile&gt;"
+      ]
+    }
+  }
+}</code></pre>
+
+        <p style="margin:14px 0 0;">For Claude Code: place this at <code style="color:var(--oat-light);background:rgba(249,247,244,0.08);">.mcp.json</code> in your project root, or <code style="color:var(--oat-light);background:rgba(249,247,244,0.08);">~/.claude/.mcp.json</code> globally. For Cursor: <code style="color:var(--oat-light);background:rgba(249,247,244,0.08);">.cursor/mcp.json</code> in your project root. Restart the client to load the new server.</p>
+      </div>
+    </div>
+
+    <div class="method" style="background:rgba(249,247,244,0.04);border-color:rgba(249,247,244,0.1);">
+      <div class="method-head" style="background:rgba(249,247,244,0.06);border-bottom-color:rgba(249,247,244,0.1);">
+        <div class="method-num">B</div>
+        <div>
+          <div class="method-title" style="color:var(--white);">Cursor-native HTTP + OAuth</div>
+          <div class="method-sub" style="color:rgba(249,247,244,0.55);">Cursor only. No subprocess; uses the editor's built-in OAuth manager.</div>
+        </div>
+      </div>
+      <div class="method-body" style="color:rgba(249,247,244,0.85);">
+        <p style="margin:8px 0 16px;">Cursor supports MCP servers over HTTP with first-class OAuth handling. No proxy script needed — Cursor opens a browser tab for the workspace login on first use and caches the token.</p>
+
+        <h4 style="color:var(--white);">Add to <code>.cursor/mcp.json</code></h4>
+<pre><code>{
+  "mcpServers": {
+    "databricks-sql": {
+      "type": "http",
+      "url": "https://&lt;your-workspace-host&gt;/api/2.0/mcp/sql",
+      "oauth": {
+        "clientId": "&lt;databricks-oauth-app-client-id&gt;",
+        "callbackPort": 8080
+      }
+    }
+  }
+}</code></pre>
+
+        <p style="margin:14px 0 0;">The <code style="color:var(--oat-light);background:rgba(249,247,244,0.08);">clientId</code> is a Databricks OAuth app client ID — a workspace admin creates this once via <code style="color:var(--oat-light);background:rgba(249,247,244,0.08);">databricks account custom-app-integration create</code> (account-level call, requires Account Admin) and shares it with users in the workspace. Hardcode the actual UUID value; placeholder strings like <code style="color:var(--oat-light);background:rgba(249,247,244,0.08);">$DATABRICKS_OAUTH_CLIENT_ID</code> are not substituted at runtime.</p>
+      </div>
+    </div>
+
+    <h3>Test the wired client</h3>
+    <p>After restarting your MCP client, ask the agent a quick SQL question:</p>
+    <pre><code>"Use the databricks-sql MCP to run: SELECT current_user(), now()"</code></pre>
+    <p>If the override is wired correctly, the query lands on your override warehouse. Verify by checking warehouse state on the Databricks control plane — see <a href="#verify" style="color:var(--lava-600);">Verify it works</a> below for the full state-delta methodology.</p>
+
+    <div class="callout" style="background:rgba(249,247,244,0.04);border-left-color:var(--lava-600);">
+      <div class="callout-label">Per-user, not per-client</div>
+      <p style="color:rgba(249,247,244,0.85);">Both clients use the same managed MCP endpoint, and the override applies to the calling user. Wiring Claude Code and Cursor for the same user means both route to the override warehouse — there is no way to send Claude Code queries to one warehouse and Cursor queries to another while sharing a user. If you need that split, use a custom MCP server (see the <a href="guide.html" style="color:var(--oat-light);border-bottom-color:rgba(249,247,244,0.3);">main pinning guide</a>).</p>
+    </div>
+  </div>
+</section>
+
+<!-- ==================================================================
+     SECTION 7 — VERIFY
      ================================================================== -->
 <section class="bg-oat" id="verify">
   <div class="container">
-    <h2><span class="num">06</span>Verify it works</h2>
+    <h2><span class="num">07</span>Verify it works</h2>
     <p class="section-lede">Three layers of verification — each tighter than the last. Use whichever fits your confidence requirement.</p>
 
     <h3>Layer 1 — confirm the override is recorded</h3>
@@ -632,7 +722,7 @@ databricks warehouses list --profile &lt;p&gt; -o json | jq '.[] | {id, state, n
      ================================================================== -->
 <section class="bg-white" id="reference">
   <div class="container">
-    <h2><span class="num">07</span>Reference</h2>
+    <h2><span class="num">08</span>Reference</h2>
 
     <h3>Override types</h3>
     <div class="table-wrap">
