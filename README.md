@@ -1,17 +1,25 @@
-# Databricks SQL MCP with Warehouse Pinning
+# Databricks managed MCP — proxy + warehouse pinning
 
-A minimal, working solution for **pinning a Databricks SQL MCP server to a
-specific SQL warehouse**. Run it locally as a stdio MCP, or deploy it as a
-Databricks App and reach it through the included OAuth proxy.
+Two patterns for working with the Databricks Model Context Protocol, both
+backed by working code in this repo:
 
-> **Prefer the visual guide?** Open [`guide.html`](guide.html) for a
-> branded, self-contained version of this content with the architecture
-> diagrams and side-by-side option comparison. For Option A specifically
-> (per-user default warehouse override — UI, CLI, and REST API), see
-> [`default-warehouse-override.html`](default-warehouse-override.html).
-> For the architecture of the stdio→HTTPS proxy that connects MCP clients
-> to Databricks managed MCP endpoints (Vector Search, Genie, SQL, UC
-> Functions), see [`managed-mcp-proxy.html`](managed-mcp-proxy.html).
+1. **Connect MCP clients to Databricks-hosted managed MCP** — Vector
+   Search, Genie, DBSQL, and Unity Catalog functions. A small stdio→HTTPS
+   proxy with workspace OAuth bridges any MCP client (Claude Code,
+   Cursor, Windsurf, Claude Desktop) to the managed endpoints. Two proxy
+   implementations are included: the hand-rolled `mcp_proxy.py` in this
+   repo, and `uvx uc-mcp-proxy` from PyPI.
+2. **Run a custom MCP server with explicit SQL warehouse pinning** — for
+   when the managed DBSQL endpoint's server-side warehouse selection
+   isn't predictable enough. Includes a 145-line `server.py` and a smoke
+   test that verifies pinning works end-to-end against your workspace.
+
+> **Prefer the visual guide?** [`managed-mcp-proxy.html`](managed-mcp-proxy.html)
+> covers pattern 1 — how the proxy bridges stdio to HTTPS, where the OAuth
+> token comes from, and which proxy implementation to pick. [`guide.html`](guide.html)
+> covers pattern 2 — how warehouse routing works on the managed endpoint
+> and the two paths to predictable selection. For the native, no-code
+> path within pattern 2, see [`default-warehouse-override.html`](default-warehouse-override.html).
 
 ## The problem this solves
 
@@ -126,8 +134,8 @@ inline declarations in each script.
 ## Step 1 — Clone
 
 ```bash
-git clone https://github.com/robkisk/databricks-mcp-warehouse-pin.git
-cd databricks-mcp-warehouse-pin
+git clone https://github.com/robkisk/databricks-managed-mcp.git
+cd databricks-managed-mcp
 ```
 
 ## Step 2 — Authenticate to your Databricks workspace

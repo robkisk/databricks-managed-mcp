@@ -553,7 +553,7 @@
         Jump to how it works
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
       </a>
-      <a class="btn btn-secondary" href="https://github.com/robkisk/databricks-mcp-warehouse-pin">Reference repo</a>
+      <a class="btn btn-secondary" href="https://github.com/robkisk/databricks-managed-mcp">Reference repo</a>
     </div>
     <div class="meta">
       <span><strong>Audience:</strong> Engineers wiring MCP clients (Claude Code, Cursor, Windsurf) to Databricks</span>
@@ -633,7 +633,7 @@
             <td>Read</td>
           </tr>
           <tr>
-            <td><strong>Databricks SQL</strong><br><span style="color:var(--slate-500);font-size:13px;">Run AI-generated SQL via a warehouse. The endpoint that <a href="https://robkisk.github.io/databricks-mcp-warehouse-pin/guide.html">picks the warehouse server-side</a>.</span></td>
+            <td><strong>Databricks SQL</strong><br><span style="color:var(--slate-500);font-size:13px;">Run AI-generated SQL via a warehouse. The endpoint that <a href="https://robkisk.github.io/databricks-managed-mcp/guide.html">picks the warehouse server-side</a>.</span></td>
             <td><code>/api/2.0/mcp/sql</code></td>
             <td><span class="badge badge-scope">sql</span></td>
             <td>Read + write</td>
@@ -1115,7 +1115,7 @@ Mcp-Session-Id: 7c1f&hellip;
 
     <div class="callout">
       <div class="callout-label">DBSQL has a routing wrinkle</div>
-      <p>The <code>/api/2.0/mcp/sql</code> endpoint picks the SQL warehouse server-side using a five-tier priority algorithm and ignores every client-side pinning attempt. For deterministic routing &mdash; cost attribution, team isolation, SLA enforcement &mdash; see <a href="https://robkisk.github.io/databricks-mcp-warehouse-pin/guide.html">the warehouse-pinning guide</a> and <a href="https://robkisk.github.io/databricks-mcp-warehouse-pin/default-warehouse-override.html">the per-user override guide</a>. The proxy itself doesn't influence warehouse selection.</p>
+      <p>The <code>/api/2.0/mcp/sql</code> endpoint picks the SQL warehouse server-side using a five-tier priority algorithm and ignores every client-side pinning attempt. For deterministic routing &mdash; cost attribution, team isolation, SLA enforcement &mdash; see <a href="https://robkisk.github.io/databricks-managed-mcp/guide.html">the warehouse-pinning guide</a> and <a href="https://robkisk.github.io/databricks-managed-mcp/default-warehouse-override.html">the per-user override guide</a>. The proxy itself doesn't influence warehouse selection.</p>
     </div>
   </div>
 </section>
@@ -1219,7 +1219,7 @@ Mcp-Session-Id: 7c1f&hellip;
     <p class="section-lede">A proxy is the right tool for stdio-only MCP clients connecting to Databricks-hosted endpoints with user-scoped auth. Three situations call for a different pattern.</p>
 
     <h3>You need the agent to own the SQL warehouse</h3>
-    <p>The managed <code>/api/2.0/mcp/sql</code> endpoint chooses warehouses server-side; a proxy can't influence that selection. If you need per-agent or per-workload pinning &mdash; cost attribution, isolation, SLA-bound compute &mdash; run a custom MCP server that calls the SDK with an explicit <code>warehouse_id</code>. The rest of <a href="https://github.com/robkisk/databricks-mcp-warehouse-pin">this repo</a> is exactly that pattern.</p>
+    <p>The managed <code>/api/2.0/mcp/sql</code> endpoint chooses warehouses server-side; a proxy can't influence that selection. If you need per-agent or per-workload pinning &mdash; cost attribution, isolation, SLA-bound compute &mdash; run a custom MCP server that calls the SDK with an explicit <code>warehouse_id</code>. The rest of <a href="https://github.com/robkisk/databricks-managed-mcp">this repo</a> is exactly that pattern.</p>
 
     <h3>Your MCP client speaks streamable-http natively</h3>
     <p>Cursor and ChatGPT support direct streamable-http connections without a stdio bridge. In that case, point the client straight at the managed endpoint with either a static PAT in <code>Authorization</code> headers or the standard MCP OAuth flow (registered as an OAuth app in your Databricks account). See the <a href="https://docs.databricks.com/aws/en/generative-ai/mcp/connect-clients">connect-clients docs</a> for client-specific recipes.</p>
@@ -1248,14 +1248,14 @@ Mcp-Session-Id: 7c1f&hellip;
       <div>
         <h4>Companion guides</h4>
         <ul>
-          <li><a href="https://robkisk.github.io/databricks-mcp-warehouse-pin/guide.html">Warehouse pinning (main)</a></li>
-          <li><a href="https://robkisk.github.io/databricks-mcp-warehouse-pin/default-warehouse-override.html">Per-user warehouse override</a></li>
+          <li><a href="https://robkisk.github.io/databricks-managed-mcp/guide.html">Warehouse pinning (main)</a></li>
+          <li><a href="https://robkisk.github.io/databricks-managed-mcp/default-warehouse-override.html">Per-user warehouse override</a></li>
         </ul>
       </div>
       <div>
         <h4>References</h4>
         <ul>
-          <li><a href="https://github.com/robkisk/databricks-mcp-warehouse-pin">Reference repo</a></li>
+          <li><a href="https://github.com/robkisk/databricks-managed-mcp">Reference repo</a></li>
           <li><a href="https://docs.databricks.com/aws/en/generative-ai/mcp/managed-mcp">Managed MCP docs</a></li>
           <li><a href="https://docs.databricks.com/aws/en/generative-ai/mcp/connect-clients">Connect-clients docs</a></li>
           <li><a href="https://pypi.org/project/uc-mcp-proxy/">uc-mcp-proxy on PyPI</a></li>

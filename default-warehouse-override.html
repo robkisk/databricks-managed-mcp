@@ -281,7 +281,7 @@
         Jump to CLI commands
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
       </a>
-      <a class="btn btn-secondary" href="https://robkisk.github.io/databricks-mcp-warehouse-pin/guide.html">Read the full pinning guide</a>
+      <a class="btn btn-secondary" href="https://robkisk.github.io/databricks-managed-mcp/guide.html">Read the full pinning guide</a>
     </div>
     <div class="meta">
       <span><strong>Audience:</strong> Workspace admins, data platform owners, end users</span>
@@ -346,7 +346,7 @@
       </div>
     </div>
 
-    <p style="margin-top:32px;font-size:14px;color:rgba(249,247,244,0.65);">For the custom-MCP path, see <a href="https://robkisk.github.io/databricks-mcp-warehouse-pin/guide.html" style="color:var(--oat-light);border-bottom-color:rgba(249,247,244,0.3);">the main warehouse-pinning guide</a>.</p>
+    <p style="margin-top:32px;font-size:14px;color:rgba(249,247,244,0.65);">For the custom-MCP path, see <a href="https://robkisk.github.io/databricks-managed-mcp/guide.html" style="color:var(--oat-light);border-bottom-color:rgba(249,247,244,0.3);">the main warehouse-pinning guide</a>.</p>
   </div>
 </section>
 
@@ -614,8 +614,8 @@ curl -X POST \
         <p style="margin:8px 0 16px;">MCP clients speak stdio (subprocess + stdin/stdout JSON-RPC). The managed MCP endpoint speaks HTTPS with Databricks OAuth. <code style="color:var(--oat-light);background:rgba(249,247,244,0.08);">mcp_proxy.py</code> bridges the two — it reads JSON-RPC from stdin, attaches an OAuth bearer token from your CLI profile, and POSTs to the workspace endpoint.</p>
 
         <h4 style="color:var(--white);margin-top:16px;">Get the proxy</h4>
-        <pre><code>git clone https://github.com/robkisk/databricks-mcp-warehouse-pin.git
-# The proxy lives at databricks-mcp-warehouse-pin/mcp_proxy.py
+        <pre><code>git clone https://github.com/robkisk/databricks-managed-mcp.git
+# The proxy lives at databricks-managed-mcp/mcp_proxy.py
 # It uses PEP 723 inline deps — no install step needed</code></pre>
 
         <h4 style="color:var(--white);">Add to <code>.mcp.json</code></h4>
@@ -625,7 +625,7 @@ curl -X POST \
       "command": "uv",
       "args": [
         "run",
-        "/absolute/path/to/databricks-mcp-warehouse-pin/mcp_proxy.py",
+        "/absolute/path/to/databricks-managed-mcp/mcp_proxy.py",
         "--path",
         "/api/2.0/mcp/sql",
         "--profile",
@@ -780,9 +780,9 @@ databricks warehouses list --profile &lt;p&gt; -o json | jq '.[] | {id, state, n
       <div>
         <h4>Links</h4>
         <ul>
-          <li><a href="https://robkisk.github.io/databricks-mcp-warehouse-pin/guide.html">Full pinning guide (both options)</a></li>
-          <li><a href="https://robkisk.github.io/databricks-mcp-warehouse-pin/managed-mcp-proxy.html">Managed MCP proxy architecture</a></li>
-          <li><a href="https://github.com/robkisk/databricks-mcp-warehouse-pin">Reference implementation on GitHub</a></li>
+          <li><a href="https://robkisk.github.io/databricks-managed-mcp/guide.html">Full pinning guide (both options)</a></li>
+          <li><a href="https://robkisk.github.io/databricks-managed-mcp/managed-mcp-proxy.html">Managed MCP proxy architecture</a></li>
+          <li><a href="https://github.com/robkisk/databricks-managed-mcp">Reference implementation on GitHub</a></li>
           <li><a href="https://docs.databricks.com/aws/en/admin/sql/">Databricks admin SQL docs</a></li>
         </ul>
       </div>

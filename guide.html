@@ -522,7 +522,7 @@
       The managed <code style="color:#FF3621;background:rgba(255,54,33,0.12);">/api/2.0/mcp/sql</code> endpoint ignores every client-side warehouse hint, but it <em>does</em> honor a server-side per-user override API. Here's how the default selection works, when it breaks production workloads, and the two approaches that give you explicit control.
     </p>
     <div class="cta-row">
-      <a class="btn btn-primary" href="https://github.com/robkisk/databricks-mcp-warehouse-pin">
+      <a class="btn btn-primary" href="https://github.com/robkisk/databricks-managed-mcp">
         Reference implementation on GitHub
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
       </a>
@@ -558,7 +558,7 @@
       <div class="tldr-card">
         <div class="label green">The fix</div>
         <h4>Two paths, depending on scope</h4>
-        <p><strong>Option A:</strong> Set a per-user default warehouse override via the SQL Warehouses API &mdash; the managed MCP honors it natively, no code needed. <strong>Option B:</strong> Run a 145-line custom MCP when you need per-agent routing or pinning that follows the workload. <a href="https://github.com/robkisk/databricks-mcp-warehouse-pin">Reference here</a>.</p>
+        <p><strong>Option A:</strong> Set a per-user default warehouse override via the SQL Warehouses API &mdash; the managed MCP honors it natively, no code needed. <strong>Option B:</strong> Run a 145-line custom MCP when you need per-agent routing or pinning that follows the workload. <a href="https://github.com/robkisk/databricks-managed-mcp">Reference here</a>.</p>
       </div>
     </div>
   </div>
@@ -798,7 +798,7 @@
     </div>
 
     <h3>Option B &mdash; Custom MCP server (when Option A doesn't fit)</h3>
-    <p>Run a custom MCP server that calls the Statement Execution API with an explicit <code>warehouse_id</code>. The reference implementation at <a href="https://github.com/robkisk/databricks-mcp-warehouse-pin">github.com/robkisk/databricks-mcp-warehouse-pin</a> is one file, ~145 lines.</p>
+    <p>Run a custom MCP server that calls the Statement Execution API with an explicit <code>warehouse_id</code>. The reference implementation at <a href="https://github.com/robkisk/databricks-managed-mcp">github.com/robkisk/databricks-managed-mcp</a> is one file, ~145 lines.</p>
 
     <div class="callout">
       <div class="callout-label">Use Option B when</div>
@@ -919,8 +919,8 @@
           <div class="step-title">Clone the reference repo</div>
         </div>
         <div class="step-body">
-<pre><code>git clone https://github.com/robkisk/databricks-mcp-warehouse-pin.git
-cd databricks-mcp-warehouse-pin</code></pre>
+<pre><code>git clone https://github.com/robkisk/databricks-managed-mcp.git
+cd databricks-managed-mcp</code></pre>
         </div>
       </div>
 
@@ -988,9 +988,9 @@ uv run smoke_test.py</code></pre>
       <div>
         <h4>Links</h4>
         <ul>
-          <li><a href="https://robkisk.github.io/databricks-mcp-warehouse-pin/default-warehouse-override.html">Per-user warehouse override</a></li>
-          <li><a href="https://robkisk.github.io/databricks-mcp-warehouse-pin/managed-mcp-proxy.html">Managed MCP proxy architecture</a></li>
-          <li><a href="https://github.com/robkisk/databricks-mcp-warehouse-pin">Reference implementation</a></li>
+          <li><a href="https://robkisk.github.io/databricks-managed-mcp/default-warehouse-override.html">Per-user warehouse override</a></li>
+          <li><a href="https://robkisk.github.io/databricks-managed-mcp/managed-mcp-proxy.html">Managed MCP proxy architecture</a></li>
+          <li><a href="https://github.com/robkisk/databricks-managed-mcp">Reference implementation</a></li>
           <li><a href="https://docs.databricks.com/aws/en/generative-ai/mcp/">Databricks MCP docs</a></li>
           <li><a href="https://modelcontextprotocol.io/">Model Context Protocol</a></li>
         </ul>
