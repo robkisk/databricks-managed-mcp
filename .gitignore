@@ -3,8 +3,10 @@
 .env.local
 *.local
 
-# A real .mcp.json is user-specific; .mcp.json.example is the template
+# A real .mcp.json is user-specific; .mcp.json.example is the template.
+# Same pattern for Cursor's parallel config at .cursor/mcp.json.
 .mcp.json
+.cursor/mcp.json
 
 # `databricks sync` writes state here — leaks workspace host + user email
 .databricks/
@@ -34,3 +36,8 @@ uv.lock
 # OS
 .DS_Store
 Thumbs.db
+.claude/
+.serena/
+
+# Scraped reference docs (firecrawl cache)
+.firecrawl/

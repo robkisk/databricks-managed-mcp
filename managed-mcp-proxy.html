@@ -1,0 +1,1270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Connecting to Databricks managed MCP through a stdio proxy</title>
+<meta name="description" content="How a small proxy bridges stdio-based MCP clients to HTTPS-based Databricks managed MCP endpoints, where the OAuth token comes from, and the two proxy implementations this repo ships.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* ----------------------------------------------------------------
+     Reset + tokens
+  ---------------------------------------------------------------- */
+  *, *::before, *::after { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+    color: #1B3139;
+    background: #F9F7F4;
+    line-height: 1.55;
+    font-size: 17px;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  :root {
+    --navy-900: #0E1416;
+    --navy-800: #1B3139;
+    --navy-700: #2F4550;
+    --slate-500: #6B7785;
+    --slate-300: #B6BFC6;
+    --oat-light: #F9F7F4;
+    --oat-medium: #EFEAE2;
+    --white: #FFFFFF;
+    --lava-600: #FF3621;
+    --lava-700: #C42818;
+    --green-700: #00A972;
+    --border-soft: #E5E1D9;
+    --code-bg: #1B3139;
+    --code-text: #EFEAE2;
+    --shadow-card: 0 1px 2px rgba(14, 20, 22, 0.04), 0 8px 24px rgba(14, 20, 22, 0.04);
+    --shadow-card-hover: 0 1px 2px rgba(14, 20, 22, 0.06), 0 16px 40px rgba(14, 20, 22, 0.08);
+  }
+  a { color: var(--lava-600); text-decoration: none; border-bottom: 1px solid transparent; transition: border-color 120ms ease; }
+  a:hover { border-bottom-color: var(--lava-600); }
+  code, pre { font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
+  code { font-size: 0.9em; background: rgba(27, 49, 57, 0.06); padding: 1px 6px; border-radius: 4px; color: var(--navy-800); }
+
+  /* ----------------------------------------------------------------
+     Layout primitives
+  ---------------------------------------------------------------- */
+  .container { max-width: 920px; margin: 0 auto; padding: 0 32px; }
+  section { padding: 96px 0; }
+  section.tight { padding: 64px 0; }
+
+  /* ----------------------------------------------------------------
+     Hero
+  ---------------------------------------------------------------- */
+  .hero {
+    background:
+      radial-gradient(ellipse at top right, rgba(255, 54, 33, 0.12), transparent 50%),
+      radial-gradient(ellipse at bottom left, rgba(0, 169, 114, 0.08), transparent 50%),
+      linear-gradient(180deg, var(--navy-900) 0%, var(--navy-800) 100%);
+    color: var(--oat-light);
+    padding: 96px 0 88px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 4px;
+    background: var(--lava-600);
+  }
+  .eyebrow {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--lava-600);
+    margin-bottom: 16px;
+  }
+  .hero h1 {
+    font-size: 56px;
+    line-height: 1.08;
+    margin: 0 0 24px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--white);
+    max-width: 820px;
+  }
+  .hero h1 .accent { color: var(--lava-600); }
+  .hero .lede {
+    font-size: 20px;
+    line-height: 1.5;
+    color: rgba(249, 247, 244, 0.85);
+    max-width: 720px;
+    margin: 0 0 36px;
+  }
+  .hero .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 24px;
+    align-items: center;
+    margin-top: 40px;
+    padding-top: 32px;
+    border-top: 1px solid rgba(249, 247, 244, 0.12);
+    font-size: 14px;
+    color: rgba(249, 247, 244, 0.6);
+  }
+  .hero .meta strong { color: var(--oat-light); font-weight: 500; }
+  .cta-row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 22px;
+    border-radius: 6px;
+    font-weight: 500;
+    font-size: 15px;
+    transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+    border-bottom: none !important;
+  }
+  .btn-primary { background: var(--lava-600); color: var(--white); }
+  .btn-primary:hover { background: var(--lava-700); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(255, 54, 33, 0.25); }
+  .btn-secondary { background: rgba(249, 247, 244, 0.08); color: var(--white); border: 1px solid rgba(249, 247, 244, 0.18); }
+  .btn-secondary:hover { background: rgba(249, 247, 244, 0.14); }
+  .preview-pill {
+    display: inline-block;
+    padding: 4px 10px;
+    background: rgba(0, 169, 114, 0.18);
+    color: #4FD8A0;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+
+  /* ----------------------------------------------------------------
+     Section headers
+  ---------------------------------------------------------------- */
+  h2 {
+    font-size: 36px;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    line-height: 1.15;
+    margin: 0 0 16px;
+    color: var(--navy-800);
+  }
+  h2 .num {
+    display: inline-block;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    color: var(--lava-600);
+    text-transform: uppercase;
+    margin-right: 12px;
+    vertical-align: middle;
+    transform: translateY(-2px);
+  }
+  h3 {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 40px 0 12px;
+    color: var(--navy-800);
+  }
+  .section-lede {
+    font-size: 19px;
+    color: var(--slate-500);
+    max-width: 760px;
+    margin: 0 0 40px;
+    line-height: 1.55;
+  }
+
+  /* ----------------------------------------------------------------
+     TLDR card grid
+  ---------------------------------------------------------------- */
+  .tldr-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-top: 32px;
+  }
+  .tldr-card {
+    background: var(--white);
+    border-radius: 12px;
+    padding: 28px;
+    border: 1px solid var(--border-soft);
+    box-shadow: var(--shadow-card);
+  }
+  .tldr-card .label {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--lava-600);
+    margin-bottom: 12px;
+  }
+  .tldr-card .label.green { color: var(--green-700); }
+  .tldr-card h4 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 8px;
+    line-height: 1.35;
+    color: var(--navy-800);
+  }
+  .tldr-card p {
+    margin: 0;
+    font-size: 14px;
+    color: var(--slate-500);
+    line-height: 1.55;
+  }
+
+  /* ----------------------------------------------------------------
+     Tables
+  ---------------------------------------------------------------- */
+  .table-wrap {
+    background: var(--white);
+    border-radius: 10px;
+    border: 1px solid var(--border-soft);
+    overflow: hidden;
+    margin: 24px 0;
+    box-shadow: var(--shadow-card);
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 15px;
+  }
+  th, td {
+    text-align: left;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border-soft);
+    vertical-align: top;
+  }
+  th {
+    background: var(--oat-medium);
+    font-weight: 600;
+    color: var(--navy-800);
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  tr:last-child td { border-bottom: none; }
+  td code { background: rgba(27, 49, 57, 0.06); font-size: 12.5px; }
+  .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    border-radius: 999px;
+    letter-spacing: 0.02em;
+  }
+  .badge-scope { background: rgba(27, 49, 57, 0.08); color: var(--navy-700); font-family: 'IBM Plex Mono', monospace; }
+
+  /* ----------------------------------------------------------------
+     Code blocks
+  ---------------------------------------------------------------- */
+  pre {
+    background: var(--code-bg);
+    color: var(--code-text);
+    padding: 22px 24px;
+    border-radius: 8px;
+    overflow-x: auto;
+    font-size: 14px;
+    line-height: 1.55;
+    margin: 20px 0;
+    box-shadow: var(--shadow-card);
+  }
+  pre code {
+    background: transparent;
+    color: inherit;
+    padding: 0;
+    font-size: inherit;
+  }
+  .code-label {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--slate-500);
+    margin-bottom: 8px;
+  }
+
+  /* ----------------------------------------------------------------
+     Diagrams + callouts
+  ---------------------------------------------------------------- */
+  .diagram {
+    background: var(--white);
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+    padding: 40px;
+    margin: 28px 0;
+    box-shadow: var(--shadow-card);
+  }
+  .diagram svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+  .diagram-caption {
+    font-size: 13px;
+    color: var(--slate-500);
+    text-align: center;
+    margin-top: 12px;
+    font-style: italic;
+  }
+
+  .callout {
+    border-left: 3px solid var(--lava-600);
+    background: var(--white);
+    padding: 20px 28px;
+    border-radius: 0 8px 8px 0;
+    margin: 24px 0;
+    box-shadow: var(--shadow-card);
+  }
+  .callout .callout-label {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--lava-600);
+    margin-bottom: 6px;
+  }
+  .callout p:last-child { margin-bottom: 0; }
+  .callout.green { border-left-color: var(--green-700); }
+  .callout.green .callout-label { color: var(--green-700); }
+  .callout.navy { border-left-color: var(--navy-700); }
+  .callout.navy .callout-label { color: var(--navy-700); }
+
+  /* ----------------------------------------------------------------
+     Section alternating backgrounds
+  ---------------------------------------------------------------- */
+  .bg-white { background: var(--white); }
+  .bg-oat { background: var(--oat-light); }
+  .bg-dark {
+    background: linear-gradient(180deg, var(--navy-800) 0%, var(--navy-900) 100%);
+    color: var(--oat-light);
+  }
+  .bg-dark h2, .bg-dark h3, .bg-dark h4 { color: var(--white); }
+  .bg-dark .section-lede { color: rgba(249, 247, 244, 0.7); }
+  .bg-dark .callout { background: rgba(249, 247, 244, 0.04); border-left-color: var(--lava-600); }
+  .bg-dark .callout p { color: rgba(249, 247, 244, 0.85); }
+  .bg-dark a { color: var(--oat-light); border-bottom-color: rgba(249, 247, 244, 0.3); }
+
+  /* ----------------------------------------------------------------
+     Two-column comparison (proxy implementations)
+  ---------------------------------------------------------------- */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin: 32px 0;
+  }
+  .col-card {
+    background: var(--white);
+    border-radius: 12px;
+    padding: 32px;
+    border: 1px solid var(--border-soft);
+    box-shadow: var(--shadow-card);
+    display: flex;
+    flex-direction: column;
+  }
+  .col-card .col-eyebrow {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--lava-600);
+    margin-bottom: 8px;
+  }
+  .col-card h4 {
+    font-size: 22px;
+    font-weight: 600;
+    margin: 0 0 8px;
+    color: var(--navy-800);
+    letter-spacing: -0.01em;
+  }
+  .col-card .col-sub {
+    font-size: 14px;
+    color: var(--slate-500);
+    margin-bottom: 22px;
+    line-height: 1.5;
+  }
+  .col-card .col-pros, .col-card .col-cons {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 16px;
+    font-size: 14px;
+  }
+  .col-card .col-pros li, .col-card .col-cons li {
+    padding: 8px 0 8px 24px;
+    color: var(--navy-700);
+    position: relative;
+    line-height: 1.45;
+  }
+  .col-card .col-pros li::before {
+    content: '+';
+    position: absolute;
+    left: 0;
+    color: var(--green-700);
+    font-weight: 700;
+  }
+  .col-card .col-cons li::before {
+    content: '–';
+    position: absolute;
+    left: 0;
+    color: var(--slate-500);
+    font-weight: 700;
+  }
+  .col-card .col-list-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--slate-500);
+    margin: 8px 0 4px;
+  }
+
+  /* ----------------------------------------------------------------
+     Steps
+  ---------------------------------------------------------------- */
+  .steps {
+    display: grid;
+    gap: 20px;
+    margin: 32px 0;
+  }
+  .step {
+    background: var(--white);
+    border-radius: 12px;
+    border: 1px solid var(--border-soft);
+    overflow: hidden;
+    box-shadow: var(--shadow-card);
+  }
+  .step-head {
+    padding: 18px 28px;
+    border-bottom: 1px solid var(--border-soft);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .step-head .step-num {
+    width: 32px; height: 32px;
+    border-radius: 999px;
+    background: var(--lava-600);
+    color: var(--white);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .step-head .step-title { font-weight: 600; color: var(--navy-800); font-size: 16px; }
+  .step-body { padding: 4px 28px 24px; font-size: 15px; color: var(--navy-700); }
+  .step-body pre { margin: 14px 0 6px; }
+
+  /* ----------------------------------------------------------------
+     Pills (server type indicators)
+  ---------------------------------------------------------------- */
+  .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 24px; }
+  .pill {
+    display: inline-block;
+    padding: 5px 12px;
+    background: rgba(27, 49, 57, 0.06);
+    color: var(--navy-700);
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  /* ----------------------------------------------------------------
+     Footer
+  ---------------------------------------------------------------- */
+  footer {
+    background: var(--navy-900);
+    color: rgba(249, 247, 244, 0.6);
+    padding: 56px 0;
+    font-size: 14px;
+  }
+  footer h4 {
+    color: var(--white);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin: 0 0 14px;
+  }
+  footer .footer-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    gap: 48px;
+    align-items: start;
+  }
+  footer a { color: var(--oat-light); border-bottom: 1px solid rgba(249, 247, 244, 0.3); }
+  footer a:hover { border-bottom-color: var(--lava-600); }
+  footer ul { list-style: none; padding: 0; margin: 0; }
+  footer li { padding: 4px 0; }
+
+  /* ----------------------------------------------------------------
+     Responsive
+  ---------------------------------------------------------------- */
+  @media (max-width: 768px) {
+    body { font-size: 16px; }
+    .container { padding: 0 20px; }
+    section { padding: 64px 0; }
+    .hero { padding: 64px 0; }
+    .hero h1 { font-size: 38px; }
+    .hero .lede { font-size: 18px; }
+    h2 { font-size: 28px; }
+    .tldr-grid { grid-template-columns: 1fr; }
+    .two-col { grid-template-columns: 1fr; }
+    footer .footer-grid { grid-template-columns: 1fr; gap: 32px; }
+    table { font-size: 13px; }
+    th, td { padding: 11px 12px; }
+    td code { font-size: 11.5px; word-break: break-all; }
+  }
+
+  /* ----------------------------------------------------------------
+     Print
+  ---------------------------------------------------------------- */
+  @media print {
+    body { background: white; color: black; font-size: 11pt; }
+    .hero, .bg-dark { background: white !important; color: black !important; }
+    .hero h1, .bg-dark h2, .bg-dark h3 { color: black !important; }
+    .hero .lede, .bg-dark .section-lede { color: #333 !important; }
+    pre { background: #f5f5f5 !important; color: #000 !important; box-shadow: none; border: 1px solid #ccc; }
+    .btn { display: none; }
+    footer { background: white; color: black; }
+    footer a { color: black; }
+    section { padding: 32px 0; page-break-inside: avoid; }
+    .table-wrap, .callout, .step, .tldr-card, .col-card, .diagram { box-shadow: none; border: 1px solid #ddd; page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ==================================================================
+     HERO
+     ================================================================== -->
+<header class="hero">
+  <div class="container">
+    <span class="preview-pill">Public Preview</span>
+    <div class="eyebrow">Databricks MCP · Architecture Guide</div>
+    <h1>Connecting MCP clients to <span class="accent">Databricks managed MCP</span> through a stdio proxy</h1>
+    <p class="lede">
+      Databricks ships pre-built MCP endpoints for Vector Search, Genie, SQL, and Unity Catalog functions &mdash; but every endpoint speaks HTTP over OAuth, and every MCP client speaks stdio over pipes. Here's how a small proxy bridges the two transports, where the OAuth token comes from, and the two proxy implementations this repo wires up in <code style="color:#FF3621;background:rgba(255,54,33,0.12);">.mcp.json.example</code>.
+    </p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="#how-it-works">
+        Jump to how it works
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+      </a>
+      <a class="btn btn-secondary" href="https://github.com/robkisk/databricks-mcp-warehouse-pin">Reference repo</a>
+    </div>
+    <div class="meta">
+      <span><strong>Audience:</strong> Engineers wiring MCP clients (Claude Code, Cursor, Windsurf) to Databricks</span>
+      <span><strong>Scope:</strong> Managed MCP endpoint connectivity</span>
+      <span><strong>Status:</strong> Public Preview as of May 2026</span>
+    </div>
+  </div>
+</header>
+
+<!-- ==================================================================
+     TL;DR
+     ================================================================== -->
+<section class="bg-oat tight" id="tldr">
+  <div class="container">
+    <h2><span class="num">01</span>The short version</h2>
+    <p class="section-lede">Three takeaways. The rest of this guide unpacks them.</p>
+
+    <div class="tldr-grid">
+      <div class="tldr-card">
+        <div class="label">What managed MCP is</div>
+        <h4>Databricks hosts the MCP servers</h4>
+        <p>Four ready-to-use endpoints under <code>/api/2.0/mcp/&hellip;</code> &mdash; Vector Search, Genie, DBSQL, and Unity Catalog functions. Unity Catalog permissions are always enforced server-side. Visible in your workspace under <strong>AI Gateway &rarr; MCPs</strong>.</p>
+      </div>
+      <div class="tldr-card">
+        <div class="label">Why a proxy</div>
+        <h4>stdio clients can't speak HTTPS+OAuth directly</h4>
+        <p>Claude Code, Cursor, Windsurf launch MCP servers as subprocesses and pipe JSON-RPC over stdin/stdout. The managed endpoints require workspace OAuth. A proxy reads stdio, gets a Bearer token from your <code>~/.databrickscfg</code>, and POSTs to the HTTPS endpoint.</p>
+      </div>
+      <div class="tldr-card">
+        <div class="label green">Two ways to run the proxy</div>
+        <h4>Hand-rolled or from PyPI</h4>
+        <p><strong>Option 1:</strong> <code>mcp_proxy.py</code> in this repo &mdash; ~190 lines, PEP 723 inline deps, no install step. <strong>Option 2:</strong> <code>uvx uc-mcp-proxy</code> &mdash; published package fetched on first run. Same wire protocol, different distribution.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================================================================
+     SECTION 2 — WHAT MANAGED MCP IS
+     ================================================================== -->
+<section class="bg-white" id="what">
+  <div class="container">
+    <h2><span class="num">02</span>What a managed MCP server is</h2>
+    <p class="section-lede">Databricks runs the MCP server for you. You point an MCP-compatible client at a URL on your workspace, authenticate with workspace OAuth, and get a set of tools that are governed by Unity Catalog.</p>
+
+    <p>The endpoints are exposed under your workspace host at <code>/api/2.0/mcp/&hellip;</code> &mdash; same hostname and auth surface as the rest of the Databricks REST API. You don't deploy, version, or scale anything. The tradeoff: you lose the per-request control that a custom MCP server gives you (warehouse pinning, custom result shaping, additional tools). For most agent-to-data-and-tools wiring, that's a fair trade.</p>
+
+    <div class="callout navy">
+      <div class="callout-label">Where to see them</div>
+      <p>In your Databricks workspace, navigate to <strong>AI Gateway &rarr; MCPs</strong>. Each enabled server shows its URL and current status. AI Gateway also surfaces usage telemetry alongside other AI resources, so you can monitor managed MCP traffic the same way you monitor Mosaic AI endpoints.</p>
+    </div>
+
+    <h3>What you get out of the box</h3>
+    <p>Four server types, each with its own URL pattern and OAuth scope. Pick whichever matches the data or tool surface your agent needs. You can wire several into the same MCP client; tool names get prefixed by server name, so they don't collide.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:22%">Server</th>
+            <th style="width:46%">URL pattern</th>
+            <th style="width:18%">OAuth scope</th>
+            <th style="width:14%">Read/write</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Vector Search</strong><br><span style="color:var(--slate-500);font-size:13px;">Query Vector Search indexes with Databricks-managed embeddings.</span></td>
+            <td><code>/api/2.0/mcp/vector-search/{catalog}/{schema}</code><br><span style="color:var(--slate-500);font-size:12px;">or scope to one index by appending <code>/{index_name}</code></span></td>
+            <td><span class="badge badge-scope">vector-search</span></td>
+            <td>Read</td>
+          </tr>
+          <tr>
+            <td><strong>Genie Space</strong><br><span style="color:var(--slate-500);font-size:13px;">Natural-language analytics over a curated Genie space.</span></td>
+            <td><code>/api/2.0/mcp/genie/{genie_space_id}</code></td>
+            <td><span class="badge badge-scope">genie</span></td>
+            <td>Read</td>
+          </tr>
+          <tr>
+            <td><strong>Databricks SQL</strong><br><span style="color:var(--slate-500);font-size:13px;">Run AI-generated SQL via a warehouse. The endpoint that <a href="https://robkisk.github.io/databricks-mcp-warehouse-pin/guide.html">picks the warehouse server-side</a>.</span></td>
+            <td><code>/api/2.0/mcp/sql</code></td>
+            <td><span class="badge badge-scope">sql</span></td>
+            <td>Read + write</td>
+          </tr>
+          <tr>
+            <td><strong>UC Functions</strong><br><span style="color:var(--slate-500);font-size:13px;">Invoke Unity Catalog SQL or Python functions as tools.</span></td>
+            <td><code>/api/2.0/mcp/functions/{catalog}/{schema}</code><br><span style="color:var(--slate-500);font-size:12px;">or scope to one function by appending <code>/{function_name}</code></span></td>
+            <td><span class="badge badge-scope">unity-catalog</span></td>
+            <td>Read (function-dependent)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">Schema-scoped vs resource-scoped URLs</div>
+      <p>For Vector Search and UC Functions, you can stop the URL at the schema level (exposes every index or function in that schema as a separate tool) or extend it to a specific resource. Schema-scoped is the right default when you want the agent to choose among related tools; resource-scoped is the right default when you want tight blast radius. Genie URLs always end at the space ID; SQL has no parameters.</p>
+    </div>
+
+    <h3>Two things to know about authorization</h3>
+    <ul>
+      <li><strong>Unity Catalog permissions are enforced server-side.</strong> The token's user (or service principal) must have the relevant grants on the underlying tables, functions, or indexes. The MCP layer doesn't elevate or bypass anything.</li>
+      <li><strong>OAuth scopes are server-typed.</strong> When connecting via the standard MCP OAuth flow (not the CLI-proxy shortcut), the OAuth app must include the scope for each server type your agent uses &mdash; <code>vector-search</code>, <code>genie</code>, <code>sql</code>, or <code>unity-catalog</code>. The CLI proxy path sidesteps this by reusing your existing CLI token.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ==================================================================
+     SECTION 3 — THE PROBLEM A PROXY SOLVES
+     ================================================================== -->
+<section class="bg-oat" id="why-proxy">
+  <div class="container">
+    <h2><span class="num">03</span>Why you need a proxy at all</h2>
+    <p class="section-lede">An MCP client and a managed Databricks endpoint speak incompatible protocols. The mismatch is not subtle &mdash; transport, framing, and authentication all differ.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:25%">Concern</th>
+            <th style="width:37.5%">MCP client (Claude Code, Cursor, &hellip;)</th>
+            <th style="width:37.5%">Databricks managed MCP endpoint</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Transport</strong></td>
+            <td>stdio &mdash; launches the server as a subprocess and pipes data over stdin/stdout</td>
+            <td>HTTPS &mdash; streamable-http endpoint, no subprocess model</td>
+          </tr>
+          <tr>
+            <td><strong>Framing</strong></td>
+            <td>Newline-delimited JSON-RPC frames</td>
+            <td>HTTP POST with JSON body; responses can be JSON or Server-Sent Events</td>
+          </tr>
+          <tr>
+            <td><strong>Authentication</strong></td>
+            <td>No native concept &mdash; just runs a binary that's already trusted</td>
+            <td>Workspace OAuth (or PAT) on every request as <code>Authorization: Bearer &lt;token&gt;</code></td>
+          </tr>
+          <tr>
+            <td><strong>Session</strong></td>
+            <td>One long-lived subprocess per server entry</td>
+            <td>Stateless HTTP; session ID returned in <code>Mcp-Session-Id</code> header and must be echoed back</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>A proxy is the small piece of code that resolves these four mismatches. It is launched as a stdio subprocess by the MCP client, reads JSON-RPC frames from stdin, opens an HTTPS connection to the managed endpoint, attaches a Bearer token, deals with SSE response parsing if the server uses it, tracks the session ID, and writes responses back to stdout. From the client's point of view, the proxy looks like a normal local MCP server.</p>
+
+    <div class="callout green">
+      <div class="callout-label">Why not just use HTTP-native MCP clients?</div>
+      <p>Some MCP clients do support streamable-http natively (the docs show examples for Cursor and ChatGPT). But the dominant clients today &mdash; Claude Code, Claude Desktop, Windsurf &mdash; expect stdio. A proxy is the universal answer: it works with every MCP client because every MCP client supports stdio.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ==================================================================
+     SECTION 4 — HOW THE PROXY WORKS
+     ================================================================== -->
+<section class="bg-white" id="how-it-works">
+  <div class="container">
+    <h2><span class="num">04</span>How the proxy works</h2>
+    <p class="section-lede">Three boxes, two arrows, one auth round-trip. Walk through one request from the moment the agent calls a tool to the moment the result lands back in the client.</p>
+
+    <div class="diagram">
+      <svg viewBox="0 0 880 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Proxy architecture: client to proxy to Databricks managed MCP">
+        <!-- Background grid -->
+        <defs>
+          <marker id="arrow-lava" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#FF3621"/>
+          </marker>
+          <marker id="arrow-navy" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#1B3139"/>
+          </marker>
+          <marker id="arrow-slate" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#6B7785"/>
+          </marker>
+        </defs>
+
+        <!-- Client box -->
+        <rect x="20" y="80" width="200" height="160" rx="10" fill="#FFFFFF" stroke="#1B3139" stroke-width="2"/>
+        <text x="120" y="108" text-anchor="middle" font-family="DM Sans, sans-serif" font-size="14" font-weight="600" fill="#1B3139">MCP client</text>
+        <text x="120" y="130" text-anchor="middle" font-family="DM Sans, sans-serif" font-size="12" fill="#6B7785">Claude Code</text>
+        <text x="120" y="148" text-anchor="middle" font-family="DM Sans, sans-serif" font-size="12" fill="#6B7785">Cursor</text>
+        <text x="120" y="166" text-anchor="middle" font-family="DM Sans, sans-serif" font-size="12" fill="#6B7785">Windsurf</text>
+        <text x="120" y="184" text-anchor="middle" font-family="DM Sans, sans-serif" font-size="12" fill="#6B7785">Claude Desktop</text>
+        <rect x="40" y="200" width="160" height="28" rx="4" fill="#EFEAE2"/>
+        <text x="120" y="218" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="#1B3139">spawns subprocess</text>
+
+        <!-- Proxy box -->
+        <rect x="340" y="50" width="200" height="220" rx="10" fill="#1B3139" stroke="#0E1416" stroke-width="2"/>
+        <rect x="340" y="50" width="200" height="32" rx="10" fill="#FF3621"/>
+        <rect x="340" y="72" width="200" height="10" fill="#FF3621"/>
+        <text x="440" y="72" text-anchor="middle" font-family="DM Sans, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF">stdio &rarr; HTTPS proxy</text>
+        <text x="440" y="110" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="#F9F7F4">1. read JSON-RPC frame</text>
+        <text x="440" y="130" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="#F9F7F4">   from stdin</text>
+        <text x="440" y="156" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="#F9F7F4">2. mint Bearer token</text>
+        <text x="440" y="176" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="#FF3621">   from ~/.databrickscfg</text>
+        <text x="440" y="202" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="#F9F7F4">3. POST frame as HTTP</text>
+        <text x="440" y="222" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="#F9F7F4">   parse SSE if returned</text>
+        <text x="440" y="248" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="#F9F7F4">4. write response</text>
+        <text x="440" y="263" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="#F9F7F4">   to stdout</text>
+
+        <!-- Databricks box -->
+        <rect x="660" y="50" width="200" height="220" rx="10" fill="#FFFFFF" stroke="#1B3139" stroke-width="2"/>
+        <text x="760" y="78" text-anchor="middle" font-family="DM Sans, sans-serif" font-size="14" font-weight="600" fill="#1B3139">Databricks workspace</text>
+        <text x="760" y="98" text-anchor="middle" font-family="DM Sans, sans-serif" font-size="11" fill="#6B7785">managed MCP endpoints</text>
+        <rect x="680" y="115" width="160" height="26" rx="4" fill="#F9F7F4" stroke="#E5E1D9"/>
+        <text x="760" y="132" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="#1B3139">/mcp/vector-search/...</text>
+        <rect x="680" y="148" width="160" height="26" rx="4" fill="#F9F7F4" stroke="#E5E1D9"/>
+        <text x="760" y="165" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="#1B3139">/mcp/genie/...</text>
+        <rect x="680" y="181" width="160" height="26" rx="4" fill="#F9F7F4" stroke="#E5E1D9"/>
+        <text x="760" y="198" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="#1B3139">/mcp/sql</text>
+        <rect x="680" y="214" width="160" height="26" rx="4" fill="#F9F7F4" stroke="#E5E1D9"/>
+        <text x="760" y="231" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="#1B3139">/mcp/functions/...</text>
+        <text x="760" y="258" text-anchor="middle" font-family="DM Sans, sans-serif" font-size="11" fill="#6B7785" font-style="italic">UC permissions enforced</text>
+
+        <!-- Arrow: client -> proxy (stdio) -->
+        <line x1="220" y1="140" x2="340" y2="140" stroke="#1B3139" stroke-width="2" marker-end="url(#arrow-navy)"/>
+        <rect x="232" y="116" width="98" height="20" rx="3" fill="#F9F7F4"/>
+        <text x="281" y="130" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="#1B3139">stdin / JSON-RPC</text>
+
+        <!-- Arrow: proxy -> client (stdout) -->
+        <line x1="340" y1="180" x2="220" y2="180" stroke="#1B3139" stroke-width="2" marker-end="url(#arrow-navy)"/>
+        <rect x="232" y="186" width="98" height="20" rx="3" fill="#F9F7F4"/>
+        <text x="281" y="200" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="#1B3139">stdout / response</text>
+
+        <!-- Arrow: proxy -> Databricks (HTTPS) -->
+        <line x1="540" y1="140" x2="660" y2="140" stroke="#FF3621" stroke-width="2" marker-end="url(#arrow-lava)"/>
+        <rect x="552" y="116" width="98" height="20" rx="3" fill="#FFFFFF"/>
+        <text x="601" y="130" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="#FF3621">HTTPS + Bearer</text>
+
+        <!-- Arrow: Databricks -> proxy (response) -->
+        <line x1="660" y1="180" x2="540" y2="180" stroke="#FF3621" stroke-width="2" marker-end="url(#arrow-lava)"/>
+        <rect x="552" y="186" width="98" height="20" rx="3" fill="#FFFFFF"/>
+        <text x="601" y="200" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="#FF3621">JSON or SSE</text>
+
+        <!-- Bottom CLI cache annotation -->
+        <rect x="340" y="300" width="200" height="60" rx="8" fill="#F9F7F4" stroke="#E5E1D9"/>
+        <text x="440" y="322" text-anchor="middle" font-family="DM Sans, sans-serif" font-size="12" font-weight="600" fill="#1B3139">Databricks CLI token cache</text>
+        <text x="440" y="340" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="#6B7785">~/.databricks/token-cache.json</text>
+        <text x="440" y="354" text-anchor="middle" font-family="DM Sans, sans-serif" font-size="11" fill="#6B7785">refreshed by the SDK on use</text>
+        <line x1="440" y1="270" x2="440" y2="300" stroke="#6B7785" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrow-slate)"/>
+      </svg>
+      <div class="diagram-caption">One request, end to end. Solid navy arrows are stdio (between client and proxy). Solid lava arrows are HTTPS (between proxy and Databricks). The dashed line is the proxy reading cached credentials from disk.</div>
+    </div>
+
+    <h3>Trace through a single tool call</h3>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-head">
+          <div class="step-num">1</div>
+          <div class="step-title">Client startup &mdash; spawn the proxy</div>
+        </div>
+        <div class="step-body">
+          <p>At launch, the MCP client reads <code>.mcp.json</code>, finds your server entry, and runs the configured <code>command</code> as a subprocess. The subprocess inherits stdin/stdout/stderr from the client. From this moment until shutdown, the proxy and client communicate over those pipes only.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-head">
+          <div class="step-num">2</div>
+          <div class="step-title">Initialize &mdash; mint the first token</div>
+        </div>
+        <div class="step-body">
+          <p>The client sends a JSON-RPC <code>initialize</code> request over stdin. Before forwarding it, the proxy builds a <code>WorkspaceClient</code> from the <code>--profile</code> argument. The Databricks SDK reads <code>~/.databrickscfg</code>, finds the host and auth method, and either reuses a cached OAuth token from <code>~/.databricks/token-cache.json</code> or kicks off a browser-based OAuth flow on first use.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-head">
+          <div class="step-num">3</div>
+          <div class="step-title">Forward &mdash; POST the frame as HTTP</div>
+        </div>
+        <div class="step-body">
+          <p>The proxy serializes the JSON-RPC frame as the body of an HTTP POST to the managed endpoint URL. It attaches an <code>Authorization: Bearer &lt;token&gt;</code> header from the SDK. If the server returns an <code>Mcp-Session-Id</code> header, the proxy caches it and echoes it back on every subsequent request &mdash; that's how the server tracks session state across stateless HTTP calls.</p>
+          <pre><code>POST /api/2.0/mcp/sql HTTP/1.1
+Host: &lt;workspace-host&gt;.cloud.databricks.com
+Content-Type: application/json
+Accept: application/json, text/event-stream
+Authorization: Bearer dapi&hellip;
+Mcp-Session-Id: 7c1f&hellip;
+
+{"jsonrpc":"2.0","method":"tools/call","params":{&hellip;},"id":1}</code></pre>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-head">
+          <div class="step-num">4</div>
+          <div class="step-title">Parse &mdash; JSON or SSE response</div>
+        </div>
+        <div class="step-body">
+          <p>The endpoint replies with either <code>application/json</code> (a single response frame) or <code>text/event-stream</code> (one or more events split by blank lines, each <code>data:</code>-prefixed). The proxy demultiplexes SSE into individual JSON-RPC frames, then writes each frame to stdout newline-delimited. The client reads them just as if they had come from a local in-process server.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-head">
+          <div class="step-num">5</div>
+          <div class="step-title">Recover &mdash; session expiry</div>
+        </div>
+        <div class="step-body">
+          <p>If the server returns HTTP <code>404</code> or <code>410</code> on a request that carries a session ID, the proxy treats that as session expiry, replays the cached <code>initialize</code> frame to mint a new session, and retries the original request once. The client never sees the blip. This is the only piece of stateful logic the proxy carries.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">Where the security boundary sits</div>
+      <p>The proxy runs on your machine as you. The Bearer token never leaves your machine in a form the client can extract &mdash; the client only ever sees JSON-RPC frames on stdio. Token refresh is handled by the SDK using the same trust boundary as <code>databricks</code> CLI commands you've already authorized.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ==================================================================
+     SECTION 5 — TWO PROXY IMPLEMENTATIONS
+     ================================================================== -->
+<section class="bg-oat" id="implementations">
+  <div class="container">
+    <h2><span class="num">05</span>Two proxy implementations</h2>
+    <p class="section-lede">Both implementations follow the same architecture from the previous section. The difference is whether the proxy code lives in your repo or is fetched from PyPI on first run. The right choice depends on how much control you want over the code.</p>
+
+    <div class="two-col">
+      <div class="col-card">
+        <div class="col-eyebrow">Option A</div>
+        <h4>Hand-rolled <code>mcp_proxy.py</code></h4>
+        <p class="col-sub">~190 lines of Python in this repo. PEP 723 inline dependencies mean <code>uv run</code> resolves <code>databricks-sdk</code> on demand &mdash; no install step, no shared venv.</p>
+
+        <div class="col-list-label">What you get</div>
+        <ul class="col-pros">
+          <li>Full read of every line that touches your OAuth token</li>
+          <li>Easy to add logging, custom session handling, or non-standard routing</li>
+          <li>One file to vendor when copying the pattern into a new repo</li>
+          <li>No external package to track for security updates</li>
+        </ul>
+        <div class="col-list-label">What it costs</div>
+        <ul class="col-cons">
+          <li>You own the maintenance &mdash; updates to MCP protocol semantics are on you</li>
+          <li>Requires committing <code>mcp_proxy.py</code> to every consuming repo (or referencing it by absolute path)</li>
+        </ul>
+
+        <pre style="margin-top: 16px;"><code>"command": "uv",
+"args": [
+  "run", "./mcp_proxy.py",
+  "--path", "/api/2.0/mcp/sql",
+  "--profile", "&lt;your-profile&gt;"
+]</code></pre>
+      </div>
+
+      <div class="col-card">
+        <div class="col-eyebrow">Option B</div>
+        <h4><code>uvx uc-mcp-proxy</code> from PyPI</h4>
+        <p class="col-sub">Published package fetched on demand by <code>uvx</code>. Documented in Databricks' own connect-clients guide as the recommended CLI-auth path for Cursor and Windsurf.</p>
+
+        <div class="col-list-label">What you get</div>
+        <ul class="col-pros">
+          <li>Zero code in your repo &mdash; just the <code>.mcp.json</code> entry</li>
+          <li>Maintained by the upstream package; SSE parsing, session handling, retries are not your problem</li>
+          <li>Lowest friction to share with a teammate: paste the JSON, they're done</li>
+          <li>Officially called out in the Databricks docs as a supported path</li>
+        </ul>
+        <div class="col-list-label">What it costs</div>
+        <ul class="col-cons">
+          <li>External dependency &mdash; you trust whatever ships in the latest version</li>
+          <li>Need a working <code>uvx</code> install on every machine that runs the client</li>
+          <li>Less obvious how to customize when something breaks</li>
+        </ul>
+
+        <pre style="margin-top: 16px;"><code>"command": "uvx",
+"args": [
+  "uc-mcp-proxy",
+  "--url", "https://&lt;host&gt;/api/2.0/mcp/sql",
+  "--auth-type", "databricks-cli",
+  "--profile", "&lt;your-profile&gt;"
+]</code></pre>
+      </div>
+    </div>
+
+    <div class="callout green">
+      <div class="callout-label">Recommendation</div>
+      <p>Default to <strong>Option B (<code>uvx uc-mcp-proxy</code>)</strong> when you're standing up a new wiring fast or sharing a recipe with teammates. Switch to <strong>Option A (hand-rolled)</strong> when you want to add behavior the package doesn't expose &mdash; structured request logging, custom retries, OBO token shaping, or anything that turns the proxy into more than a pipe.</p>
+    </div>
+
+    <h3>What's actually different in the args</h3>
+    <p>The hand-rolled proxy resolves the workspace host from your CLI profile, so you only pass the API path. The PyPI proxy is profile-agnostic and takes the full URL. Two style choices for the same destination.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:32%">Concern</th>
+            <th style="width:34%">Hand-rolled <code>mcp_proxy.py</code></th>
+            <th style="width:34%"><code>uvx uc-mcp-proxy</code></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>How the workspace host is supplied</td>
+            <td>Derived from <code>--profile</code> via <code>~/.databrickscfg</code></td>
+            <td>Hardcoded into <code>--url</code></td>
+          </tr>
+          <tr>
+            <td>How the endpoint path is supplied</td>
+            <td><code>--path /api/2.0/mcp/&hellip;</code></td>
+            <td>Trailing path on <code>--url</code></td>
+          </tr>
+          <tr>
+            <td>Auth-type selector</td>
+            <td>Implicit &mdash; SDK default chain</td>
+            <td>Explicit &mdash; <code>--auth-type databricks-cli</code></td>
+          </tr>
+          <tr>
+            <td>Install step</td>
+            <td>None &mdash; <code>uv run</code> resolves PEP 723 deps</td>
+            <td>None &mdash; <code>uvx</code> fetches on first run</td>
+          </tr>
+          <tr>
+            <td>Repo footprint</td>
+            <td>One file (~190 lines)</td>
+            <td>Zero files</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ==================================================================
+     SECTION 6 — WIRING IT INTO YOUR MCP CLIENT
+     ================================================================== -->
+<section class="bg-white" id="wiring">
+  <div class="container">
+    <h2><span class="num">06</span>Wiring it into your MCP client</h2>
+    <p class="section-lede">Add server entries to <code>.mcp.json</code> (project-level) or <code>~/.claude/.mcp.json</code> (global), then restart your MCP client &mdash; servers only load at startup. The full template lives in <code>.mcp.json.example</code> in this repo; below are the four canonical patterns.</p>
+
+    <h3>Prerequisite &mdash; authenticate the CLI once</h3>
+    <p>Both proxy variants reuse the OAuth token cached by the Databricks CLI. If you haven't authenticated against the workspace yet, do it now:</p>
+    <pre><code>databricks auth login --host https://&lt;workspace-host&gt;.cloud.databricks.com --profile &lt;your-profile&gt;</code></pre>
+    <p>This kicks off a browser flow, mints a token, and caches it at <code>~/.databricks/token-cache.json</code> keyed on the profile name. From then on the proxy can mint Bearer tokens silently. The token auto-refreshes; you don't need to redo this until the refresh token expires.</p>
+
+    <h3>Wire Vector Search</h3>
+    <div class="two-col">
+      <div>
+        <span class="code-label">Hand-rolled proxy</span>
+<pre><code>"vs-customer-support": {
+  "command": "uv",
+  "args": [
+    "run", "./mcp_proxy.py",
+    "--path",
+    "/api/2.0/mcp/vector-search/prod/support",
+    "--profile", "&lt;your-profile&gt;"
+  ]
+}</code></pre>
+      </div>
+      <div>
+        <span class="code-label">uvx uc-mcp-proxy</span>
+<pre><code>"vs-customer-support": {
+  "type": "stdio",
+  "command": "uvx",
+  "args": [
+    "uc-mcp-proxy",
+    "--url", "https://&lt;host&gt;/api/2.0/mcp/vector-search/prod/support",
+    "--auth-type", "databricks-cli",
+    "--profile", "&lt;your-profile&gt;"
+  ]
+}</code></pre>
+      </div>
+    </div>
+
+    <h3>Wire a Genie space</h3>
+    <div class="two-col">
+      <div>
+        <span class="code-label">Hand-rolled proxy</span>
+<pre><code>"genie-billing": {
+  "command": "uv",
+  "args": [
+    "run", "./mcp_proxy.py",
+    "--path",
+    "/api/2.0/mcp/genie/&lt;genie-space-id&gt;",
+    "--profile", "&lt;your-profile&gt;"
+  ]
+}</code></pre>
+      </div>
+      <div>
+        <span class="code-label">uvx uc-mcp-proxy</span>
+<pre><code>"genie-billing": {
+  "type": "stdio",
+  "command": "uvx",
+  "args": [
+    "uc-mcp-proxy",
+    "--url", "https://&lt;host&gt;/api/2.0/mcp/genie/&lt;genie-space-id&gt;",
+    "--auth-type", "databricks-cli",
+    "--profile", "&lt;your-profile&gt;"
+  ]
+}</code></pre>
+      </div>
+    </div>
+
+    <h3>Wire DBSQL</h3>
+    <div class="two-col">
+      <div>
+        <span class="code-label">Hand-rolled proxy</span>
+<pre><code>"dbsql": {
+  "command": "uv",
+  "args": [
+    "run", "./mcp_proxy.py",
+    "--path", "/api/2.0/mcp/sql",
+    "--profile", "&lt;your-profile&gt;"
+  ]
+}</code></pre>
+      </div>
+      <div>
+        <span class="code-label">uvx uc-mcp-proxy</span>
+<pre><code>"dbsql": {
+  "type": "stdio",
+  "command": "uvx",
+  "args": [
+    "uc-mcp-proxy",
+    "--url", "https://&lt;host&gt;/api/2.0/mcp/sql",
+    "--auth-type", "databricks-cli",
+    "--profile", "&lt;your-profile&gt;"
+  ]
+}</code></pre>
+      </div>
+    </div>
+
+    <h3>Wire UC Functions</h3>
+    <div class="two-col">
+      <div>
+        <span class="code-label">Hand-rolled proxy</span>
+<pre><code>"ucfunc-retail": {
+  "command": "uv",
+  "args": [
+    "run", "./mcp_proxy.py",
+    "--path",
+    "/api/2.0/mcp/functions/prod/retail",
+    "--profile", "&lt;your-profile&gt;"
+  ]
+}</code></pre>
+      </div>
+      <div>
+        <span class="code-label">uvx uc-mcp-proxy</span>
+<pre><code>"ucfunc-retail": {
+  "type": "stdio",
+  "command": "uvx",
+  "args": [
+    "uc-mcp-proxy",
+    "--url", "https://&lt;host&gt;/api/2.0/mcp/functions/prod/retail",
+    "--auth-type", "databricks-cli",
+    "--profile", "&lt;your-profile&gt;"
+  ]
+}</code></pre>
+      </div>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">DBSQL has a routing wrinkle</div>
+      <p>The <code>/api/2.0/mcp/sql</code> endpoint picks the SQL warehouse server-side using a five-tier priority algorithm and ignores every client-side pinning attempt. For deterministic routing &mdash; cost attribution, team isolation, SLA enforcement &mdash; see <a href="https://robkisk.github.io/databricks-mcp-warehouse-pin/guide.html">the warehouse-pinning guide</a> and <a href="https://robkisk.github.io/databricks-mcp-warehouse-pin/default-warehouse-override.html">the per-user override guide</a>. The proxy itself doesn't influence warehouse selection.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ==================================================================
+     SECTION 7 — THE AUTH CHAIN
+     ================================================================== -->
+<section class="bg-dark" id="auth-chain">
+  <div class="container">
+    <h2><span class="num">07</span>The auth chain, end to end</h2>
+    <p class="section-lede">Where the Bearer token actually comes from when you write <code>--profile dev</code> and don't think about it again. Three layers of resolution, all handled by the Databricks SDK.</p>
+
+    <div class="steps">
+      <div class="step" style="background: rgba(249, 247, 244, 0.04); border-color: rgba(249, 247, 244, 0.08);">
+        <div class="step-head" style="border-bottom-color: rgba(249, 247, 244, 0.08);">
+          <div class="step-num">1</div>
+          <div class="step-title" style="color: var(--white);"><code>~/.databrickscfg</code> resolution</div>
+        </div>
+        <div class="step-body" style="color: rgba(249, 247, 244, 0.85);">
+          <p>The proxy passes <code>profile=&lt;your-profile&gt;</code> into <code>WorkspaceClient</code>. The SDK opens <code>~/.databrickscfg</code>, finds the matching <code>[your-profile]</code> section, and reads <code>host</code> plus whatever auth fields are configured (<code>token</code>, <code>auth_type</code>, <code>client_id</code>, &hellip;). For OAuth profiles created via <code>databricks auth login</code>, only <code>host</code> appears in the file &mdash; the rest is implicit.</p>
+        </div>
+      </div>
+
+      <div class="step" style="background: rgba(249, 247, 244, 0.04); border-color: rgba(249, 247, 244, 0.08);">
+        <div class="step-head" style="border-bottom-color: rgba(249, 247, 244, 0.08);">
+          <div class="step-num">2</div>
+          <div class="step-title" style="color: var(--white);">Token cache check</div>
+        </div>
+        <div class="step-body" style="color: rgba(249, 247, 244, 0.85);">
+          <p>The SDK looks for a cached token in <code>~/.databricks/token-cache.json</code>, keyed by workspace host plus profile. If a non-expired access token exists, it's used directly. If the access token has expired but a refresh token is present, the SDK calls Databricks to exchange the refresh token for a new access token and updates the cache in place &mdash; no user interaction.</p>
+        </div>
+      </div>
+
+      <div class="step" style="background: rgba(249, 247, 244, 0.04); border-color: rgba(249, 247, 244, 0.08);">
+        <div class="step-head" style="border-bottom-color: rgba(249, 247, 244, 0.08);">
+          <div class="step-num">3</div>
+          <div class="step-title" style="color: var(--white);">Fallback to browser flow</div>
+        </div>
+        <div class="step-body" style="color: rgba(249, 247, 244, 0.85);">
+          <p>If neither an access nor a refresh token is usable, the SDK starts the OAuth code flow: opens a localhost listener, prints a URL, and waits for the user to complete the browser-based consent. This is the only path that requires human interaction; once it completes, the cache is populated and subsequent requests stay quiet.</p>
+        </div>
+      </div>
+    </div>
+
+    <h3>What ends up in the HTTP request</h3>
+    <p>By the time the proxy POSTs the JSON-RPC frame, all three layers have collapsed into a single header. The endpoint never sees your profile name, never knows whether the token was cached or just minted, and never cares which CLI version produced it.</p>
+
+    <pre><code style="color: #FF3621;">Authorization: Bearer dapi0123abc456def&hellip;</code></pre>
+
+    <div class="callout">
+      <div class="callout-label">Verifying the chain from the outside</div>
+      <p>If a request fails with <code>401</code>, the fastest diagnostic is <code>databricks current-user me --profile &lt;your-profile&gt;</code>. If that command succeeds, your CLI auth is healthy and the issue is elsewhere (UC permissions, IP allowlist, scope mismatch). If it fails, re-run <code>databricks auth login</code> for the profile.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ==================================================================
+     SECTION 8 — VERIFYING IT WORKS
+     ================================================================== -->
+<section class="bg-white" id="verifying">
+  <div class="container">
+    <h2><span class="num">08</span>Verifying the wiring</h2>
+    <p class="section-lede">After editing <code>.mcp.json</code>, restart your MCP client. The new tools should appear in the tool list, prefixed by the server name you gave them. Three quick checks turn up most wiring problems.</p>
+
+    <h3>Check 1 &mdash; CLI auth is alive</h3>
+    <p>Confirms the proxy will be able to mint a token. If this fails, fix the profile first; everything downstream depends on it.</p>
+    <pre><code>databricks current-user me --profile &lt;your-profile&gt;
+# expect: JSON with your userName, emails, id</code></pre>
+
+    <h3>Check 2 &mdash; the endpoint reaches your network</h3>
+    <p>An unauthenticated <code>curl</code> should hit the endpoint and come back with a <code>401 Unauthorized</code>. That's the signal that DNS, TLS, and the workspace are reachable; the server simply rejected the request because it had no Bearer token.</p>
+    <pre><code>curl -i https://&lt;workspace-host&gt;.cloud.databricks.com/api/2.0/mcp/sql \
+  -X POST -H "Content-Type: application/json" -d '{}'
+# expect: HTTP/2 401 with a www-authenticate header</code></pre>
+    <p>If you get <code>403</code>, the workspace's IP allowlist is blocking you. If the request hangs or TLS fails, the workspace URL or your DNS is wrong.</p>
+
+    <h3>Check 3 &mdash; the proxy starts cleanly</h3>
+    <p>Run the proxy command directly, send a JSON-RPC <code>initialize</code> on stdin, and confirm a well-formed response comes back on stdout. This is the same call your MCP client makes at startup.</p>
+    <pre><code>echo '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"manual","version":"1"}},"id":1}' \
+  | uv run ./mcp_proxy.py --path /api/2.0/mcp/sql --profile &lt;your-profile&gt;
+# expect: one JSON-RPC response with serverInfo and capabilities</code></pre>
+
+    <div class="callout green">
+      <div class="callout-label">Common failure modes</div>
+      <p>
+        <strong>Tools never appear in client:</strong> the MCP client did not restart, or the JSON in <code>.mcp.json</code> is malformed (run <code>python -m json.tool .mcp.json</code> to validate).<br>
+        <strong>401 from the endpoint, CLI auth passes:</strong> the workspace and the profile don't match. Make sure the profile's <code>host</code> is the same workspace that owns the resource you're trying to access.<br>
+        <strong>403 or empty tool list:</strong> Unity Catalog permissions. The user behind the OAuth token needs grants on the underlying catalog, schema, function, index, or Genie space.<br>
+        <strong>Proxy exits immediately:</strong> Python error from <code>databricks-sdk</code>. Run the proxy command from a terminal to see the stderr traceback.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ==================================================================
+     SECTION 9 — WHEN A PROXY IS NOT THE ANSWER
+     ================================================================== -->
+<section class="bg-oat" id="alternatives">
+  <div class="container">
+    <h2><span class="num">09</span>When a proxy is not the answer</h2>
+    <p class="section-lede">A proxy is the right tool for stdio-only MCP clients connecting to Databricks-hosted endpoints with user-scoped auth. Three situations call for a different pattern.</p>
+
+    <h3>You need the agent to own the SQL warehouse</h3>
+    <p>The managed <code>/api/2.0/mcp/sql</code> endpoint chooses warehouses server-side; a proxy can't influence that selection. If you need per-agent or per-workload pinning &mdash; cost attribution, isolation, SLA-bound compute &mdash; run a custom MCP server that calls the SDK with an explicit <code>warehouse_id</code>. The rest of <a href="https://github.com/robkisk/databricks-mcp-warehouse-pin">this repo</a> is exactly that pattern.</p>
+
+    <h3>Your MCP client speaks streamable-http natively</h3>
+    <p>Cursor and ChatGPT support direct streamable-http connections without a stdio bridge. In that case, point the client straight at the managed endpoint with either a static PAT in <code>Authorization</code> headers or the standard MCP OAuth flow (registered as an OAuth app in your Databricks account). See the <a href="https://docs.databricks.com/aws/en/generative-ai/mcp/connect-clients">connect-clients docs</a> for client-specific recipes.</p>
+
+    <h3>You need machine-to-machine auth</h3>
+    <p>The proxy reuses your interactive CLI token, which is tied to a user identity. For service-principal-attributed traffic (a deployed agent making MCP calls on behalf of an automation, not a person), use OAuth M2M with <code>client_id</code> and <code>client_secret</code> directly in the <code>WorkspaceClient</code> &mdash; either inside your own agent code or inside a custom MCP server hosted as a Databricks App.</p>
+
+    <div class="callout navy">
+      <div class="callout-label">What this guide covers</div>
+      <p>Connecting a stdio MCP client (Claude Code, Cursor, Windsurf, Claude Desktop) to a Databricks-hosted managed MCP endpoint, with auth resolved through your local Databricks CLI profile. That's the most common path. For the alternatives above, the docs in the footer have client-specific recipes.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ==================================================================
+     FOOTER
+     ================================================================== -->
+<footer>
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <h4>About this guide</h4>
+        <p>How a small stdio-to-HTTPS proxy bridges MCP clients to Databricks managed MCP endpoints, how the OAuth token chain resolves, and which proxy implementation to pick. Findings come from the reference implementation in this repo and the official Databricks documentation, scraped May 2026.</p>
+        <p style="margin-top: 16px;">If something looks wrong in your workspace, doesn't match the docs, or you want the pattern extended, the reference repo accepts issues and PRs.</p>
+      </div>
+      <div>
+        <h4>Companion guides</h4>
+        <ul>
+          <li><a href="https://robkisk.github.io/databricks-mcp-warehouse-pin/guide.html">Warehouse pinning (main)</a></li>
+          <li><a href="https://robkisk.github.io/databricks-mcp-warehouse-pin/default-warehouse-override.html">Per-user warehouse override</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>References</h4>
+        <ul>
+          <li><a href="https://github.com/robkisk/databricks-mcp-warehouse-pin">Reference repo</a></li>
+          <li><a href="https://docs.databricks.com/aws/en/generative-ai/mcp/managed-mcp">Managed MCP docs</a></li>
+          <li><a href="https://docs.databricks.com/aws/en/generative-ai/mcp/connect-clients">Connect-clients docs</a></li>
+          <li><a href="https://pypi.org/project/uc-mcp-proxy/">uc-mcp-proxy on PyPI</a></li>
+          <li><a href="https://modelcontextprotocol.io/">Model Context Protocol</a></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

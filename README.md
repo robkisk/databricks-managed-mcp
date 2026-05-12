@@ -9,6 +9,9 @@ Databricks App and reach it through the included OAuth proxy.
 > diagrams and side-by-side option comparison. For Option A specifically
 > (per-user default warehouse override — UI, CLI, and REST API), see
 > [`default-warehouse-override.html`](default-warehouse-override.html).
+> For the architecture of the stdio→HTTPS proxy that connects MCP clients
+> to Databricks managed MCP endpoints (Vector Search, Genie, SQL, UC
+> Functions), see [`managed-mcp-proxy.html`](managed-mcp-proxy.html).
 
 ## The problem this solves
 
@@ -199,9 +202,10 @@ If the test says PASS, **the pin works in your workspace**. Move on.
 
 ## Step 6 — Wire into Claude Code / Cursor
 
-Open `.mcp.json.example`. Copy the `_LOCAL_STDIO_MODE` entry into your real
-`.mcp.json` (project-level or `~/.claude/.mcp.json` for global). Replace
-the placeholders with your real values:
+Add the following entry to your real MCP config — `.mcp.json` (Claude Code
+project-level), `~/.claude/.mcp.json` (Claude Code global), or
+`.cursor/mcp.json` (Cursor). Replace the placeholders with your real
+values:
 
 ```json
 {
@@ -218,6 +222,12 @@ the placeholders with your real values:
 }
 ```
 
+The repo ships `.mcp.json.example` and a byte-identical
+`.cursor/mcp.json.example` for the related pattern of proxying to
+Databricks-hosted **managed** MCP endpoints (Vector Search, Genie, SQL,
+UC Functions). For the architecture and trade-offs, see
+[`managed-mcp-proxy.html`](managed-mcp-proxy.html).
+
 **Restart your MCP client** (Claude Code, Cursor, etc.) — MCP servers only
 load at startup. After restart you'll see a tool named
 `mcp__pinned-sql__execute_sql` in the tool list. Ask the agent to run a
@@ -230,15 +240,22 @@ warehouse.
 
 ```
 .
-├── server.py            ← The MCP server. Dual transport (stdio + HTTP). 145 lines.
-├── mcp_proxy.py         ← Stdio→HTTPS bridge with Databricks OAuth. For remote app.
-├── smoke_test.py        ← End-to-end verifier (state-delta methodology).
-├── app.yaml             ← Databricks Apps deployment config.
-├── .env.example         ← Env var template.
-├── .mcp.json.example    ← MCP client config templates (local + deployed).
-├── .gitignore           ← Protects .env and .mcp.json from being committed.
-├── LICENSE              ← MIT.
-└── README.md            ← You are here.
+├── server.py                       ← The MCP server. Dual transport (stdio + HTTP). 145 lines.
+├── mcp_proxy.py                    ← Stdio→HTTPS bridge with Databricks OAuth. Works against
+│                                     a deployed Databricks App OR any managed MCP endpoint.
+├── smoke_test.py                   ← End-to-end verifier (state-delta methodology).
+├── app.yaml                        ← Databricks Apps deployment config.
+├── .env.example                    ← Env var template.
+├── .mcp.json.example               ← MCP client templates — both proxy implementations
+│                                     (hand-rolled + uvx uc-mcp-proxy) across the four
+│                                     managed MCP endpoint types.
+├── .cursor/mcp.json.example        ← Cursor's parallel of .mcp.json.example, byte-identical.
+├── guide.html                      ← Visual guide: warehouse pinning, both options.
+├── default-warehouse-override.html ← Focused guide: Option A (per-user override).
+├── managed-mcp-proxy.html          ← Architecture guide: managed MCP via the proxy.
+├── .gitignore                      ← Protects .env, .mcp.json, .cursor/mcp.json from commits.
+├── LICENSE                         ← MIT.
+└── README.md                       ← You are here.
 ```
 
 All three Python files use [PEP 723](https://peps.python.org/pep-0723/)
@@ -316,8 +333,8 @@ databricks apps get $APP_NAME --profile $PROFILE -o json | jq -r .url
 
 ## Wire the deployed app into Claude Code
 
-Copy the `_DEPLOYED_APP_MODE` entry from `.mcp.json.example` into your real
-`.mcp.json`. Substitute the deployed URL + your profile name:
+Add this entry to your real `.mcp.json`. Substitute the deployed URL +
+your profile name:
 
 ```json
 {
